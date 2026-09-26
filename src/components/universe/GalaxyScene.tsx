@@ -10,6 +10,7 @@ import { getRenderScale, onRenderScaleChange } from '@/components/universe/quali
 import { playEventSound } from '@/components/universe/soundscape';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { L, useLang, getLang } from './i18n';
 import {
   STAR_VERTEX,
   STAR_FRAGMENT,
@@ -30,7 +31,11 @@ const SPIN_RATE = 0.012; // galaxy yaw, rad per real-time second
 const TOUR_DURATION = 24; // seconds, 3 stages x 8 s
 const STAGE_LEN = 8;
 
-const STAGE_LABELS = ['俯瞰', '侧视', '穿入旋臂'] as const;
+const STAGE_LABELS: ReadonlyArray<readonly [string, string]> = [
+  ['俯瞰', 'Top-down'],
+  ['侧视', 'Side view'],
+  ['穿入旋臂', 'Dive into arms'],
+];
 
 /* -------- F12: spiral-arm science layer (real Milky Way arm names) -------- */
 interface ArmSpec {
@@ -38,9 +43,13 @@ interface ArmSpec {
   r: number; // marker radius along the ridge (model units)
   name: string;
   en: string;
+  nameEn: string; // title-case English name (chip primary text in en mode)
   kind: string;
+  kindEn: string;
   dist: string; // approx distance from the galactic center
+  distEn: string;
   desc: string;
+  descEn: string;
   color: string;
 }
 
@@ -50,9 +59,14 @@ const ARM_SPECS: ArmSpec[] = [
     r: 30,
     name: '猎户臂',
     en: 'ORION SPUR',
+    nameEn: 'Orion Spur',
     kind: '支臂 · 本地臂',
+    kindEn: 'Spur · Local Arm',
     dist: '距银心 ≈ 1.5 万光年',
+    distEn: '≈ 15,000 ly from center',
     desc: '太阳系所在的支臂，长约 1 万光年。著名的猎户座大星云（M42）就位于这条臂上。',
+    descEn:
+      'The spur where the Solar System resides, about 10,000 ly long. The famous Orion Nebula (M42) lies on this arm.',
     color: '#fbbf24',
   },
   {
@@ -60,9 +74,14 @@ const ARM_SPECS: ArmSpec[] = [
     r: 62,
     name: '人马臂',
     en: 'SAGITTARIUS ARM',
+    nameEn: 'Sagittarius Arm',
     kind: '主旋臂',
+    kindEn: 'Major arm',
     dist: '距银心 ≈ 3.1 万光年',
+    distEn: '≈ 31,000 ly from center',
     desc: '银河系主要旋臂之一，富含发射星云与年轻疏散星团，M8 礁湖星云位于其中。',
+    descEn:
+      "One of the Milky Way's major arms, rich in emission nebulae and young open clusters; the Lagoon Nebula (M8) lies within.",
     color: '#a78bfa',
   },
   {
@@ -70,9 +89,14 @@ const ARM_SPECS: ArmSpec[] = [
     r: 74,
     name: '盾牌-半人马臂',
     en: 'SCUTUM-CENTAURUS ARM',
+    nameEn: 'Scutum–Centaurus Arm',
     kind: '主旋臂 · 最亮',
+    kindEn: 'Major arm · brightest',
     dist: '距银心 ≈ 3.7 万光年',
+    distEn: '≈ 37,000 ly from center',
     desc: '银河系最显著的主旋臂之一，靠近银核一侧，恒星密度极高，拥有大量大质量恒星形成区。',
+    descEn:
+      'One of the most prominent major arms, on the side closer to the galactic core, with extremely high stellar density and many massive star-forming regions.',
     color: '#34d399',
   },
   {
@@ -80,9 +104,14 @@ const ARM_SPECS: ArmSpec[] = [
     r: 66,
     name: '英仙臂',
     en: 'PERSEUS ARM',
+    nameEn: 'Perseus Arm',
     kind: '主旋臂',
+    kindEn: 'Major arm',
     dist: '距银心 ≈ 3.3 万光年',
+    distEn: '≈ 33,000 ly from center',
     desc: '太阳外侧的最近主旋臂，距我们约 6,400 光年，以超新星遗迹仙后座 A 闻名。',
+    descEn:
+      "The nearest major arm beyond the Sun's orbit, about 6,400 ly from us, famed for the Cassiopeia A supernova remnant.",
     color: '#fb7185',
   },
 ];
@@ -214,6 +243,7 @@ interface StarBookmark {
 }
 
 const STAR_NAMES = ['天枢', '天璇', '天玑', '天权', '玉衡', '开阳', '摇光', '文昌', '天市', '太微', '紫微', '钩陈'];
+const STAR_NAMES_EN = ['Dubhe', 'Merak', 'Phecda', 'Megrez', 'Alioth', 'Mizar', 'Alkaid', 'Sirius', 'Vega', 'Altair', 'Deneb', 'Polaris'];
 const BOOKMARK_LIMIT = 12;
 const BOOKMARK_LS_KEY = 'universe-star-bookmarks';
 
@@ -282,11 +312,15 @@ const parseBookmark = (raw: unknown): StarBookmark | null => {
   };
 };
 
+/** i18n — X 万光年 → X×10,000 ly, formatted for the en locale */
+const fmtWanToLy = (wan: number): string => `${Math.round(wan * 10000).toLocaleString('en-US')} ly`;
+
 /* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
 export default function GalaxyScene() {
+  const lang = useLang(); // re-render on language change so all L() texts update
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const barRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const tourApiRef = useRef<{ start: () => void; stop: () => void }>({ start: () => {}, stop: () => {} });
@@ -339,23 +373,25 @@ export default function GalaxyScene() {
   /* F34 — copy the collection JSON to the clipboard */
   const handleExportBookmarks = useCallback(async () => {
     const list = bookmarksRef.current;
+    const en = getLang() === 'en';
     if (list.length === 0) {
-      flashBmMsg('收藏为空——先点击画面收藏几颗星吧');
+      flashBmMsg(en ? 'Collection is empty — click stars on the canvas to bookmark them' : '收藏为空——先点击画面收藏几颗星吧');
       playEventSound('click');
       return;
     }
     const ok = await copyTextToClipboard(JSON.stringify(list));
     if (ok) {
-      flashBmMsg(`已复制 ${list.length} 颗星的档案 JSON`);
+      flashBmMsg(en ? `Copied profile JSON for ${list.length} stars` : `已复制 ${list.length} 颗星的档案 JSON`);
       playEventSound('success');
     } else {
-      flashBmMsg('复制失败，请重试');
+      flashBmMsg(en ? 'Copy failed, please retry' : '复制失败，请重试');
       playEventSound('click');
     }
   }, [flashBmMsg]);
 
   /* F34 — read JSON from the clipboard and merge into the collection */
   const handleImportBookmarks = useCallback(async () => {
+    const en = getLang() === 'en';
     let raw: string | null = null;
     try {
       if (navigator.clipboard?.readText) {
@@ -365,7 +401,7 @@ export default function GalaxyScene() {
       raw = null;
     }
     if (raw === null) {
-      flashBmMsg('无法读取剪贴板（需浏览器授权或内容为空）');
+      flashBmMsg(en ? 'Cannot read the clipboard (permission required or content empty)' : '无法读取剪贴板（需浏览器授权或内容为空）');
       playEventSound('click');
       return;
     }
@@ -384,10 +420,10 @@ export default function GalaxyScene() {
         added++;
       }
       if (added > 0) commitBookmarks(cur);
-      flashBmMsg(added > 0 ? `已导入 ${added} 颗新星` : '没有可导入的新星（重复或无效）');
+      flashBmMsg(added > 0 ? (en ? `Imported ${added} new stars` : `已导入 ${added} 颗新星`) : en ? 'No new stars to import (duplicates or invalid)' : '没有可导入的新星（重复或无效）');
       playEventSound(added > 0 ? 'success' : 'click');
     } catch {
-      flashBmMsg('导入失败：剪贴板内容不是有效的星图 JSON');
+      flashBmMsg(en ? 'Import failed: the clipboard content is not valid star-map JSON' : '导入失败：剪贴板内容不是有效的星图 JSON');
       playEventSound('click');
     }
   }, [flashBmMsg, commitBookmarks]);
@@ -801,11 +837,16 @@ export default function GalaxyScene() {
     const pointerNdc = new THREE.Vector2();
     const hoverPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // galactic plane y=0
     const hoverHit = new THREE.Vector3();
-    const ARM_NAMES = ARM_SPECS.map((s) => s.name);
-    let hoverT = 0;
-    let hoverBestIdx = -1; // F30 — exposed for the click-to-bookmark handler
-    let hoverPointer: { x: number; y: number } | null = null; // css px inside the wrap
+    /* i18n — these run inside the render loop / event callbacks, so pick the language at call time */
     const spectralOf = (t: number): string => {
+      if (getLang() === 'en') {
+        if (t < 3700) return 'M type · red star';
+        if (t < 5200) return 'K type · orange star';
+        if (t < 6000) return 'G type · yellow star (Sun-like)';
+        if (t < 7500) return 'F type · yellow-white star';
+        if (t < 10000) return 'A type · white star';
+        return 'B type · blue-white star';
+      }
       if (t < 3700) return 'M 型 · 红星';
       if (t < 5200) return 'K 型 · 橙星';
       if (t < 6000) return 'G 型 · 黄星（太阳同类）';
@@ -813,8 +854,22 @@ export default function GalaxyScene() {
       if (t < 10000) return 'A 型 · 白星';
       return 'B 型 · 蓝白星';
     };
-    const typeOf = (k: number): string =>
-      k === 0 ? '核球老年星' : k === 2 ? '旋臂脊线年轻热星' : k === 3 ? '巨星' : '盘场恒星';
+    const typeOf = (k: number): string => {
+      if (getLang() === 'en') {
+        return k === 0 ? 'Old bulge star' : k === 2 ? 'Young hot ridge star' : k === 3 ? 'Giant star' : 'Disk field star';
+      }
+      return k === 0 ? '核球老年星' : k === 2 ? '旋臂脊线年轻热星' : k === 3 ? '巨星' : '盘场恒星';
+    };
+    const armNameOf = (idx: number): string => {
+      const en = getLang() === 'en';
+      if (idx === 255) return en ? 'Central Bulge' : '核球区';
+      const spec = ARM_SPECS[idx];
+      if (!spec) return en ? 'Disk Field' : '盘场';
+      return en ? spec.nameEn : spec.name;
+    };
+    let hoverT = 0;
+    let hoverBestIdx = -1; // F30 — exposed for the click-to-bookmark handler
+    let hoverPointer: { x: number; y: number } | null = null; // css px inside the wrap
     const onHoverMove = (ev: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
       hoverPointer = { x: ev.clientX - r.left, y: ev.clientY - r.top };
@@ -845,12 +900,12 @@ export default function GalaxyScene() {
       const spectral = spectralOf(starTemp[i]);
       const bm: StarBookmark = {
         id: `${Date.now()}-${i}`,
-        name: STAR_NAMES[list.length % STAR_NAMES.length],
+        name: (getLang() === 'en' ? STAR_NAMES_EN : STAR_NAMES)[list.length % STAR_NAMES.length],
         temp: starTemp[i],
         rGal,
         spectral,
         typeName: typeOf(starType[i]),
-        armName: starArm[i] === 255 ? '核球区' : ARM_NAMES[starArm[i]] ?? '盘场',
+        armName: armNameOf(starArm[i]),
         x: starPos[i * 3],
         y: starPos[i * 3 + 1],
         z: starPos[i * 3 + 2],
@@ -1115,14 +1170,19 @@ export default function GalaxyScene() {
             const wz = -sx * s + sz * c;
             const wy = starPos[best * 3 + 1];
             const rGal = Math.hypot(sx, sz) * 500; // 1 scene unit = 500 ly (disk r=100 ↔ 5万光年)
-            const armTxt = starArm[best] === 255 ? '核球区' : ARM_NAMES[starArm[best]] ?? '盘场';
+            const en = getLang() === 'en';
+            const armTxt = armNameOf(starArm[best]);
             const dObs = camera.position.distanceTo(tmpPos.set(wx, wy, wz)) * 500;
-            const dObsTxt =
-              dObs >= 10000 ? `≈ ${(dObs / 10000).toFixed(1)} 万光年` : `≈ ${Math.round(dObs)} 光年`;
+            const dObsTxt = en
+              ? `≈ ${Math.round(dObs).toLocaleString('en-US')} ly`
+              : dObs >= 10000
+                ? `≈ ${(dObs / 10000).toFixed(1)} 万光年`
+                : `≈ ${Math.round(dObs)} 光年`;
+            const distCenterTxt = en ? `≈ ${fmtWanToLy(rGal)} from center` : `距银心 ≈ ${(rGal / 10000).toFixed(1)} 万光年`;
             tip.innerHTML =
               `<div class="text-[11px] font-semibold text-zinc-100">${spectralOf(starTemp[best])}</div>` +
-              `<div class="mt-0.5 text-[10px] text-zinc-400">${typeOf(starType[best])} · ${armTxt} · 距银心 ≈ ${(rGal / 10000).toFixed(1)} 万光年</div>` +
-              `<div class="text-[9px] text-zinc-500">距观察者 ${dObsTxt} · 表面温度 ~${Math.round(starTemp[best])} K</div>`;
+              `<div class="mt-0.5 text-[10px] text-zinc-400">${typeOf(starType[best])} · ${armTxt} · ${distCenterTxt}</div>` +
+              `<div class="text-[9px] text-zinc-500">${en ? `${dObsTxt} from observer` : `距观察者 ${dObsTxt}`} · ${en ? 'Surface temp' : '表面温度'} ~${Math.round(starTemp[best]).toLocaleString('en-US')} K</div>`;
             tip.style.display = 'block';
             const tx = Math.min(Math.max(hoverPointer.x + 14, 8), sw - 190);
             const ty = Math.min(Math.max(hoverPointer.y + 14, 8), sh - 76);
@@ -1195,54 +1255,54 @@ export default function GalaxyScene() {
       {webglFailed ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center">
           <div className="rounded-2xl border border-white/10 bg-black/45 px-6 py-5 text-center backdrop-blur-xl">
-            <p className="text-sm font-medium text-zinc-200">WebGL 初始化失败</p>
+            <p className="text-sm font-medium text-zinc-200">{L('WebGL 初始化失败', 'WebGL initialization failed')}</p>
             <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
-              当前浏览器或设备不支持 WebGL，无法渲染银河系场景
+              {L('当前浏览器或设备不支持 WebGL，无法渲染银河系场景', 'Your browser or device does not support WebGL, so the galaxy scene cannot be rendered')}
             </p>
           </div>
         </div>
       ) : (
         <>
           {/* top-right stats card */}
-          <div className="absolute right-4 top-20 z-20 w-[190px] rounded-2xl border border-white/10 bg-black/45 p-3 backdrop-blur-xl portrait:right-3 portrait:top-[138px]">
+          <div className="uni-anim-fade-up absolute right-4 top-20 z-20 w-[190px] rounded-2xl border border-white/10 bg-black/45 p-3 backdrop-blur-xl portrait:right-3 portrait:top-[138px]">
             <p className="text-[10px] font-semibold tracking-[0.28em] text-zinc-500">MILKY WAY</p>
             <div className="mt-2 space-y-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
-                <span className="text-[11px] text-zinc-200">120,000 颗恒星</span>
+                <span className="text-[11px] text-zinc-200">{L('120,000 颗恒星', '120,000 stars')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Orbit className="h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden />
-                <span className="text-[11px] text-zinc-200">4 条对数螺旋旋臂</span>
+                <span className="text-[11px] text-zinc-200">{L('4 条对数螺旋旋臂', '4 log-spiral arms')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Zap className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
-                <span className="text-[11px] text-zinc-200">GPU Points 渲染</span>
+                <span className="text-[11px] text-zinc-200">{L('GPU Points 渲染', 'GPU Points rendering')}</span>
               </div>
             </div>
             <p className="mt-2.5 border-t border-white/5 pt-2 text-[10px] leading-relaxed text-zinc-500">
-              拖拽旋转 · 滚轮缩放 · 悬停银盘看恒星档案 · 点击收藏
+              {L('拖拽旋转 · 滚轮缩放 · 悬停银盘看恒星档案 · 点击收藏', 'Drag to rotate · Scroll to zoom · Hover the disk for star profiles · Click to bookmark')}
             </p>
             <div className="mt-2 flex items-center justify-between border-t border-white/5 pt-2">
               <div className="flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5 text-amber-300" aria-hidden />
-                <span className="text-[11px] text-zinc-200">太阳位置</span>
+                <span className="text-[11px] text-zinc-200">{L('太阳位置', 'Sun position')}</span>
               </div>
               <Switch
                 checked={showSunMarker}
                 onCheckedChange={setShowSunMarker}
-                aria-label="显示太阳位置标记"
+                aria-label={L('显示太阳位置标记', 'Show Sun position marker')}
               />
             </div>
             <div className="mt-2 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Orbit className="h-3.5 w-3.5 text-violet-300" aria-hidden />
-                <span className="text-[11px] text-zinc-200">旋臂标注</span>
+                <span className="text-[11px] text-zinc-200">{L('旋臂标注', 'Arm labels')}</span>
               </div>
               <Switch
                 checked={showArmLabels}
                 onCheckedChange={setShowArmLabels}
-                aria-label="显示旋臂标注"
+                aria-label={L('显示旋臂标注', 'Show arm labels')}
               />
             </div>
             <button
@@ -1260,7 +1320,7 @@ export default function GalaxyScene() {
               )}
             >
               <BookOpen className="h-3.5 w-3.5" aria-hidden />
-              旋臂档案
+              {L('旋臂档案', 'Spiral arm profiles')}
             </button>
             {/* F43 — Milky Way encyclopedia dossier */}
             <button
@@ -1279,7 +1339,7 @@ export default function GalaxyScene() {
               )}
             >
               <Telescope className="h-3.5 w-3.5" aria-hidden />
-              银河系档案
+              {L('银河系档案', 'Milky Way fact sheet')}
             </button>
             {/* F30 — open the personal star map */}
             <button
@@ -1294,7 +1354,7 @@ export default function GalaxyScene() {
               )}
             >
               <Star className="h-3.5 w-3.5" aria-hidden />
-              星图收藏（{bookmarks.length}）
+              {L(`星图收藏（${bookmarks.length}）`, `Star Bookmarks (${bookmarks.length})`)}
             </button>
           </div>
 
@@ -1302,12 +1362,15 @@ export default function GalaxyScene() {
           <div
             ref={sunLabelRef}
             style={{ display: 'none' }}
-            title="太阳系位于猎户臂，距银心约 2.6 万光年，绕银心一周约 2.3 亿年"
+            title={L(
+              '太阳系位于猎户臂，距银心约 2.6 万光年，绕银心一周约 2.3 亿年',
+              'The Solar System lies on the Orion Spur, about 26,000 ly from the galactic center, completing one orbit in about 230 million years'
+            )}
             className="pointer-events-none absolute left-0 top-0 z-20 flex items-center gap-1.5 rounded-full border border-amber-300/40 bg-black/60 px-2.5 py-1 shadow-[0_0_14px_rgba(251,191,36,0.25)] backdrop-blur-md"
           >
             <MapPin className="h-3 w-3 text-amber-300" aria-hidden />
-            <span className="text-[10px] font-medium tracking-wider text-amber-100">太阳系 · 猎户臂</span>
-            <span className="text-[9px] tracking-wider text-zinc-400">≈ 2.6 万光年</span>
+            <span className="text-[10px] font-medium tracking-wider text-amber-100">{L('太阳系 · 猎户臂', 'Solar System · Orion Spur')}</span>
+            <span className="text-[9px] tracking-wider text-zinc-400">{L('≈ 2.6 万光年', '≈ 26,000 ly')}</span>
           </div>
 
           {/* F28 — hover star inspector tooltip */}
@@ -1316,7 +1379,7 @@ export default function GalaxyScene() {
             style={{ display: 'none' }}
             role="status"
             aria-live="polite"
-            className="pointer-events-none absolute left-0 top-0 z-30 rounded-lg border border-white/10 bg-black/70 px-2.5 py-1.5 shadow-lg shadow-black/50 backdrop-blur-md"
+            className="uni-anim-fade-in pointer-events-none absolute left-0 top-0 z-30 rounded-lg border border-white/10 bg-black/70 px-2.5 py-1.5 shadow-lg shadow-black/50 backdrop-blur-md"
           />
 
           {/* Spiral-arm DOM labels (F12) — click for the arm dossier */}
@@ -1332,12 +1395,12 @@ export default function GalaxyScene() {
                 setArmCardOpen(true);
                 setGalaxyCardOpen(false);
               }}
-              title={`${spec.name} · ${spec.desc}`}
+              title={L(`${spec.name} · ${spec.desc}`, `${spec.nameEn} · ${spec.descEn}`)}
               className="pointer-events-auto absolute left-0 top-0 z-[25] flex items-center gap-1.5 rounded-full border bg-black/55 px-2.5 py-1 shadow-md shadow-black/40 backdrop-blur-md transition-transform duration-150 hover:scale-105"
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: spec.color, boxShadow: `0 0 6px ${spec.color}` }} aria-hidden />
-              <span className="text-[10px] font-medium tracking-wider text-zinc-100">{spec.name}</span>
-              <span className="text-[9px] tracking-wider text-zinc-400">{spec.en}</span>
+              <span className="text-[10px] font-medium tracking-wider text-zinc-100">{L(spec.name, spec.nameEn)}</span>
+              {lang === 'zh' && <span className="text-[9px] tracking-wider text-zinc-400">{spec.en}</span>}
             </button>
           ))}
 
@@ -1354,7 +1417,10 @@ export default function GalaxyScene() {
                 bookmarkFlightRef.current = i;
                 playEventSound('click');
               }}
-              title={`${bm.name} · ${bm.spectral} · 距银心 ≈ ${bm.rGal.toFixed(1)} 万光年 · 点击定位`}
+              title={L(
+                `${bm.name} · ${bm.spectral} · 距银心 ≈ ${bm.rGal.toFixed(1)} 万光年 · 点击定位`,
+                `${bm.name} · ${bm.spectral} · ≈ ${fmtWanToLy(bm.rGal)} from center · Click to locate`
+              )}
               className="pointer-events-auto absolute left-0 top-0 z-[25] items-center gap-1 rounded-full border border-amber-300/40 bg-black/60 px-2 py-0.5 shadow-[0_0_10px_rgba(251,191,36,0.22)] backdrop-blur-md transition-transform duration-150 hover:scale-105"
             >
               <Star className="h-2.5 w-2.5 fill-amber-300 text-amber-300" aria-hidden />
@@ -1366,19 +1432,19 @@ export default function GalaxyScene() {
           <div
             aria-hidden={!bookmarkCardOpen}
             className={cn(
-              'absolute bottom-24 right-4 z-30 w-[280px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:left-3 portrait:right-3 portrait:w-auto portrait:max-w-none',
+              'uni-anim-scale-in absolute bottom-24 right-4 z-30 w-[280px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:left-3 portrait:right-3 portrait:w-auto portrait:max-w-none',
               bookmarkCardOpen ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
             )}
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold tracking-[0.26em] text-amber-200/90">星图收藏</p>
+                <p className="text-[11px] font-semibold tracking-[0.26em] text-amber-200/90">{L('星图收藏', 'STAR BOOKMARKS')}</p>
                 <p className="mt-0.5 text-[9px] tracking-[0.3em] text-zinc-500">MY STAR MAP</p>
               </div>
               <button
                 type="button"
                 onClick={() => setBookmarkCardOpen(false)}
-                aria-label="关闭星图收藏"
+                aria-label={L('关闭星图收藏', 'Close star bookmarks')}
                 className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
               >
                 <X className="h-3.5 w-3.5" aria-hidden />
@@ -1386,11 +1452,15 @@ export default function GalaxyScene() {
             </div>
             {bookmarks.length === 0 ? (
               <p className="mt-3 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2.5 text-[10px] leading-relaxed text-zinc-500">
-                悬停银盘任意恒星查看档案，然后<span className="text-amber-200/80">直接点击画面</span>
-                即可收藏（上限 {BOOKMARK_LIMIT} 颗），收藏会保存在本机浏览器中。
+                {L('悬停银盘任意恒星查看档案，然后', 'Hover any star on the galactic disk to view its profile, then ')}
+                <span className="text-amber-200/80">{L('直接点击画面', 'click directly on the canvas')}</span>
+                {L(
+                  `即可收藏（上限 ${BOOKMARK_LIMIT} 颗），收藏会保存在本机浏览器中。`,
+                  ` to bookmark it (up to ${BOOKMARK_LIMIT} stars). Your collection is saved in this browser.`
+                )}
               </p>
             ) : (
-              <div className="universe-scroll mt-3 max-h-[220px] space-y-1.5 overflow-y-auto pr-1">
+              <div className="uni-anim-stagger universe-scroll mt-3 max-h-[220px] space-y-1.5 overflow-y-auto pr-1">
                 {bookmarks.map((bm, i) => (
                   <div
                     key={bm.id}
@@ -1406,7 +1476,7 @@ export default function GalaxyScene() {
                         <span className="ml-1.5 text-[9px] font-normal text-zinc-500">{bm.spectral}</span>
                       </p>
                       <p className="truncate text-[9px] text-zinc-500">
-                        {bm.armName} · 距银心 ≈ {bm.rGal.toFixed(1)} 万光年
+                        {bm.armName} · {L(`距银心 ≈ ${bm.rGal.toFixed(1)} 万光年`, `≈ ${fmtWanToLy(bm.rGal)} from center`)}
                       </p>
                     </div>
                     <button
@@ -1415,8 +1485,8 @@ export default function GalaxyScene() {
                         bookmarkFlightRef.current = i;
                         playEventSound('click');
                       }}
-                      aria-label={`定位到${bm.name}`}
-                      title="飞往这颗星"
+                      aria-label={L(`定位到${bm.name}`, `Fly to ${bm.name}`)}
+                      title={L('飞往这颗星', 'Fly to this star')}
                       className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-amber-200/10 hover:text-amber-200"
                     >
                       <Crosshair className="h-3.5 w-3.5" aria-hidden />
@@ -1427,8 +1497,8 @@ export default function GalaxyScene() {
                         commitBookmarks(bookmarks.filter((b) => b.id !== bm.id));
                         playEventSound('click');
                       }}
-                      aria-label={`移除${bm.name}`}
-                      title="移除收藏"
+                      aria-label={L(`移除${bm.name}`, `Remove ${bm.name}`)}
+                      title={L('移除收藏', 'Remove bookmark')}
                       className="rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-rose-400/10 hover:text-rose-300"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -1437,7 +1507,10 @@ export default function GalaxyScene() {
                 ))}
                 {bookmarks.length >= BOOKMARK_LIMIT && (
                   <p className="px-1 pt-1 text-[9px] text-amber-200/60">
-                    收藏已满（{BOOKMARK_LIMIT}）——移除一些以继续收藏。
+                    {L(
+                      `收藏已满（${BOOKMARK_LIMIT}）——移除一些以继续收藏。`,
+                      `Collection is full (${BOOKMARK_LIMIT}) — remove some to keep bookmarking.`
+                    )}
                   </p>
                 )}
               </div>
@@ -1448,18 +1521,18 @@ export default function GalaxyScene() {
                 <button
                   type="button"
                   onClick={handleExportBookmarks}
-                  title="把收藏列表复制为 JSON（可分享给别人）"
+                  title={L('把收藏列表复制为 JSON（可分享给别人）', 'Copy the collection as JSON (shareable with others)')}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-[10px] font-medium text-zinc-300 transition-colors hover:border-amber-200/40 hover:bg-amber-200/10 hover:text-amber-200 [@media(pointer:coarse)]:py-2"
                 >
-                  <Download className="h-3 w-3" aria-hidden /> 导出星图
+                  <Download className="h-3 w-3" aria-hidden /> {L('导出星图', 'Export star map')}
                 </button>
                 <button
                   type="button"
                   onClick={handleImportBookmarks}
-                  title="从剪贴板读取星图 JSON 并合并（重复自动跳过）"
+                  title={L('从剪贴板读取星图 JSON 并合并（重复自动跳过）', 'Read star-map JSON from the clipboard and merge (duplicates skipped)')}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-[10px] font-medium text-zinc-300 transition-colors hover:border-emerald-200/40 hover:bg-emerald-200/10 hover:text-emerald-200 [@media(pointer:coarse)]:py-2"
                 >
-                  <Upload className="h-3 w-3" aria-hidden /> 导入星图
+                  <Upload className="h-3 w-3" aria-hidden /> {L('导入星图', 'Import star map')}
                 </button>
               </div>
               <p
@@ -1478,25 +1551,25 @@ export default function GalaxyScene() {
           <div
             aria-hidden={!armCardOpen}
             className={cn(
-              'absolute bottom-24 left-4 z-30 w-[312px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:w-auto portrait:max-w-none',
+              'uni-anim-scale-in absolute bottom-24 left-4 z-30 w-[312px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:w-auto portrait:max-w-none',
               armCardOpen ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
             )}
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold tracking-[0.26em] text-violet-200/90">旋臂档案</p>
+                <p className="text-[11px] font-semibold tracking-[0.26em] text-violet-200/90">{L('旋臂档案', 'SPIRAL ARM PROFILES')}</p>
                 <p className="mt-0.5 text-[9px] tracking-[0.3em] text-zinc-500">MILKY WAY SPIRAL ARMS</p>
               </div>
               <button
                 type="button"
                 onClick={() => setArmCardOpen(false)}
-                aria-label="关闭旋臂档案"
+                aria-label={L('关闭旋臂档案', 'Close spiral arm profiles')}
                 className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
               >
                 <X className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
-            <div className="universe-scroll mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
+            <div className="uni-anim-stagger universe-scroll mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
               {ARM_SPECS.map((spec) => (
                 <div key={spec.name} className="rounded-xl border border-white/5 bg-white/[0.03] p-2.5">
                   <div className="flex items-center gap-2">
@@ -1505,20 +1578,24 @@ export default function GalaxyScene() {
                       style={{ backgroundColor: spec.color, boxShadow: `0 0 8px ${spec.color}` }}
                       aria-hidden
                     />
-                    <span className="text-[12px] font-semibold text-zinc-100">{spec.name}</span>
+                    <span className="text-[12px] font-semibold text-zinc-100">{L(spec.name, spec.nameEn)}</span>
                     <span className="rounded-full border border-white/10 bg-black/40 px-1.5 py-0.5 text-[8px] font-medium tracking-wider text-zinc-400">
-                      {spec.kind}
+                      {L(spec.kind, spec.kindEn)}
                     </span>
                   </div>
                   <p className="mt-1 text-[9px] tracking-[0.18em] text-zinc-500">
-                    {spec.en} · {spec.dist}
+                    {lang === 'zh' && `${spec.en} · `}
+                    {L(spec.dist, spec.distEn)}
                   </p>
-                  <p className="mt-1 text-[10.5px] leading-relaxed text-zinc-400">{spec.desc}</p>
+                  <p className="mt-1 text-[10.5px] leading-relaxed text-zinc-400">{L(spec.desc, spec.descEn)}</p>
                 </div>
               ))}
             </div>
             <p className="mt-2.5 border-t border-white/5 pt-2 text-[9.5px] leading-relaxed text-zinc-500">
-              另有矩尺臂（Norma）等小旋臂贴近银核；太阳系位于猎户支臂上，距银心约 2.6 万光年。
+              {L(
+                '另有矩尺臂（Norma）等小旋臂贴近银核；太阳系位于猎户支臂上，距银心约 2.6 万光年。',
+                'Smaller arms such as the Norma Arm hug the galactic core; the Solar System sits on the Orion Spur, about 26,000 ly from the center.'
+              )}
             </p>
           </div>
 
@@ -1526,35 +1603,35 @@ export default function GalaxyScene() {
           <div
             aria-hidden={!galaxyCardOpen}
             className={cn(
-              'absolute bottom-24 left-4 z-30 w-[312px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:w-auto portrait:max-w-none',
+              'uni-anim-scale-in absolute bottom-24 left-4 z-30 w-[312px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:w-auto portrait:max-w-none',
               galaxyCardOpen ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
             )}
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold tracking-[0.26em] text-teal-200/90">银河系档案</p>
-                <p className="mt-0.5 text-[9px] tracking-[0.3em] text-zinc-500">MILKY WAY FACT SHEET</p>
+                <p className="text-[11px] font-semibold tracking-[0.26em] text-teal-200/90">{L('银河系档案', 'MILKY WAY FACT SHEET')}</p>
+                <p className="mt-0.5 text-[9px] tracking-[0.3em] text-zinc-500">{L('MILKY WAY FACT SHEET', 'QUICK FACTS')}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setGalaxyCardOpen(false)}
-                aria-label="关闭银河系档案"
+                aria-label={L('关闭银河系档案', 'Close Milky Way fact sheet')}
                 className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
               >
                 <X className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
-            <div className="universe-scroll mt-3 max-h-[46vh] space-y-2 overflow-y-auto pr-1">
+            <div className="uni-anim-stagger universe-scroll mt-3 max-h-[46vh] space-y-2 overflow-y-auto pr-1">
               {[
-                { icon: Telescope, label: '星系类型', value: '棒旋星系 SBbc', sub: '中心棒结构 + 四条主旋臂' },
-                { icon: Ruler, label: '盘面直径', value: '≈ 10 万光年', sub: '核球隆起约 1 万光年厚，银盘厚约 1000 光年' },
-                { icon: Sparkles, label: '恒星总数', value: '1000 – 4000 亿颗', sub: '本场景渲染 12 万颗 + 2.6 万尘埃粒子' },
-                { icon: Users, label: '年龄', value: '≈ 136 亿年', sub: '几乎与宇宙（138 亿年）同龄' },
-                { icon: Sun, label: '太阳系位置', value: '猎户支臂 · 距银心 2.6 万光年', sub: '约在银心到边缘一半处，避开强辐射区' },
-                { icon: Orbit, label: '银河年', value: '≈ 2.3 亿年/圈', sub: '太阳绕银心公转一周所需时间，时速约 828,000 km/h' },
-                { icon: CircleDot, label: '中心黑洞', value: '人马座 A*（Sgr A*）', sub: '质量 ≈ 430 万倍太阳，2022 年被事件视界望远镜成像' },
-                { icon: Scale, label: '总质量', value: '≈ 1.5 万亿倍太阳', sub: '约 85% 来自看不见的暗物质晕' },
-                { icon: Hourglass, label: '未来命运', value: '与仙女座星系相撞', sub: '预计 ≈ 45 亿年后合并为一个椭圆星系' },
+                { icon: Telescope, label: L('星系类型', 'Galaxy type'), value: L('棒旋星系 SBbc', 'Barred spiral SBbc'), sub: L('中心棒结构 + 四条主旋臂', 'A central bar + four major spiral arms') },
+                { icon: Ruler, label: L('盘面直径', 'Disk diameter'), value: L('≈ 10 万光年', '≈ 100,000 ly'), sub: L('核球隆起约 1 万光年厚，银盘厚约 1000 光年', 'The bulge is ~10,000 ly thick; the disk only ~1,000 ly') },
+                { icon: Sparkles, label: L('恒星总数', 'Total stars'), value: L('1000 – 4000 亿颗', '100–400 billion'), sub: L('本场景渲染 12 万颗 + 2.6 万尘埃粒子', 'This scene renders 120,000 stars + 26,000 dust particles') },
+                { icon: Users, label: L('年龄', 'Age'), value: L('≈ 136 亿年', '≈ 13.6 billion years'), sub: L('几乎与宇宙（138 亿年）同龄', 'Nearly as old as the universe (13.8 billion years)') },
+                { icon: Sun, label: L('太阳系位置', 'Solar System location'), value: L('猎户支臂 · 距银心 2.6 万光年', 'Orion Spur · 26,000 ly from the center'), sub: L('约在银心到边缘一半处，避开强辐射区', 'About halfway to the edge, away from intense radiation zones') },
+                { icon: Orbit, label: L('银河年', 'Galactic year'), value: L('≈ 2.3 亿年/圈', '≈ 230 million years per orbit'), sub: L('太阳绕银心公转一周所需时间，时速约 828,000 km/h', 'Time for one solar orbit around the center, at ~828,000 km/h') },
+                { icon: CircleDot, label: L('中心黑洞', 'Central black hole'), value: L('人马座 A*（Sgr A*）', 'Sagittarius A* (Sgr A*)'), sub: L('质量 ≈ 430 万倍太阳，2022 年被事件视界望远镜成像', 'Mass ≈ 4.3 million suns; imaged by the Event Horizon Telescope in 2022') },
+                { icon: Scale, label: L('总质量', 'Total mass'), value: L('≈ 1.5 万亿倍太阳', '≈ 1.5 trillion solar masses'), sub: L('约 85% 来自看不见的暗物质晕', 'About 85% of it from the invisible dark matter halo') },
+                { icon: Hourglass, label: L('未来命运', 'Future fate'), value: L('与仙女座星系相撞', 'Collision with the Andromeda Galaxy'), sub: L('预计 ≈ 45 亿年后合并为一个椭圆星系', 'Expected to merge into an elliptical galaxy in ≈ 4.5 billion years') },
               ].map((row) => (
                 <div key={row.label} className="flex items-start gap-2.5 rounded-xl border border-white/5 bg-white/[0.03] p-2.5">
                   <row.icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal-200/80" aria-hidden />
@@ -1568,16 +1645,19 @@ export default function GalaxyScene() {
             </div>
             <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/5 pt-2 text-[9.5px] leading-relaxed text-zinc-500">
               <GitMerge className="h-3 w-3 shrink-0 text-teal-200/60" aria-hidden />
-              场景换算：1 场景单位 = 500 光年 · 银盘以对数螺旋臂模型生成
+              {L(
+                '场景换算：1 场景单位 = 500 光年 · 银盘以对数螺旋臂模型生成',
+                'Scale: 1 scene unit = 500 ly · the disk is generated with a log-spiral arm model'
+              )}
             </p>
           </div>
 
           {/* bottom-center tour control bar */}
-          <div className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 portrait:bottom-[calc(3.75rem+var(--ui-safe-bottom))] portrait:w-max portrait:max-w-[96vw]">
+          <div className="uni-anim-fade-up absolute bottom-5 left-1/2 z-20 -translate-x-1/2 portrait:bottom-[calc(3.75rem+var(--ui-safe-bottom))] portrait:w-max portrait:max-w-[96vw]">
             <div
               className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/45 px-2.5 py-2 shadow-lg shadow-black/50 backdrop-blur-xl portrait:max-w-[96vw] portrait:gap-1.5 portrait:px-2"
               role="group"
-              aria-label="自动巡游控制"
+              aria-label={L('自动巡游控制', 'Automatic tour controls')}
             >
               <button
                 type="button"
@@ -1594,7 +1674,7 @@ export default function GalaxyScene() {
                 ) : (
                   <Play className="h-3.5 w-3.5 fill-current" aria-hidden />
                 )}
-                {tourOn ? '停止巡游' : '开始巡游'}
+                {tourOn ? L('停止巡游', 'Stop tour') : L('开始巡游', 'Start tour')}
               </button>
 
               <div className="mx-0.5 h-6 w-px bg-white/10" aria-hidden />
@@ -1604,7 +1684,7 @@ export default function GalaxyScene() {
                   const active = stage === i;
                   return (
                     <div
-                      key={label}
+                      key={label[0]}
                       className={
                         'relative flex min-h-[30px] items-center rounded-lg border px-3 pb-2 pt-1.5 text-[11px] font-medium transition-colors duration-300 portrait:min-h-[34px] portrait:px-2 portrait:pb-1.5 portrait:pt-1 portrait:text-[10px] [@media(pointer:coarse)]:min-h-[40px] ' +
                         (active
@@ -1612,7 +1692,7 @@ export default function GalaxyScene() {
                           : 'border-transparent text-zinc-400')
                       }
                     >
-                      <span>{label}</span>
+                      <span>{L(label[0], label[1])}</span>
                       <span className="absolute bottom-[3px] left-2 right-2 h-[2px] overflow-hidden rounded-full bg-white/10">
                         <span
                           ref={(el) => {
