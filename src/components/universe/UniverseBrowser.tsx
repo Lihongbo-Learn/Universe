@@ -113,6 +113,8 @@ export default function UniverseBrowser() {
   /* origin-aware transitions (一镜到底): panels open from the trigger, close back into it */
   const [exitFrame, setExitFrame] = useState<string | null>(null);
   const transitioningRef = useRef(false);
+  const pendingSceneRef = useRef<SceneId | null>(null);
+  const switchToRef = useRef<(id: SceneId) => void>(() => {});
   const [settingsClosing, setSettingsClosing] = useState(false);
   const [audioClosing, setAudioClosing] = useState(false);
   const settingsOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -223,7 +225,12 @@ export default function UniverseBrowser() {
       // reset fps readout while the next scene boots
       const v = document.getElementById('fps-value');
       if (v) v.textContent = '--';
-      if (id === active || transitioningRef.current) return; // one journey at a time
+      if (id === active) return;
+      // one journey at a time — but a click during a journey is QUEUED, never lost
+      if (transitioningRef.current) {
+        pendingSceneRef.current = id;
+        return;
+      }
       playEventSound('switch'); // F23 — airy swish on scene change
       // 一镜到底 scene travel: freeze the outgoing scene into a frame that
       // recedes into a point while the incoming scene grows beneath it.
@@ -234,10 +241,19 @@ export default function UniverseBrowser() {
       window.setTimeout(() => {
         setExitFrame(null);
         transitioningRef.current = false;
+        const queued = pendingSceneRef.current;
+        if (queued) {
+          pendingSceneRef.current = null;
+          queueMicrotask(() => switchToRef.current(queued));
+        }
       }, 1000);
     },
     [active]
   );
+
+  useEffect(() => {
+    switchToRef.current = switchTo;
+  }, [switchTo]);
 
   /* settings dialog open/close (both play the shared UI click).
      一镜到底: the dialog scales out of the gear button's position and
@@ -460,7 +476,7 @@ export default function UniverseBrowser() {
                   {tab.sub}
                 </span>
                 {isActive && (
-                  <span className="absolute -bottom-[7px] left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-full bg-amber-300/80 shadow-[0_0_8px_rgba(252,211,77,0.8)]" />
+                  <span className="absolute bottom-1 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-full bg-amber-300/80 shadow-[0_0_8px_rgba(252,211,77,0.8)]" />
                 )}
               </button>
             );

@@ -175,17 +175,17 @@ function radecToVec3(raHours: number, decDeg: number, radius: number): THREE.Vec
   );
 }
 
-function makeSignLabelTexture(symbol: string, text: string): THREE.CanvasTexture {
+function makeSignLabelTexture(text: string, color = 'rgba(230,214,170,0.95)'): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 64;
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    ctx.font = '500 24px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+    ctx.font = '500 26px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(230,214,170,0.95)';
-    ctx.fillText(`${symbol} ${text}`, 128, 34);
+    ctx.fillStyle = color;
+    ctx.fillText(text, 128, 34);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -370,7 +370,7 @@ export default function ZodiacScene() {
       scene.add(ring);
       disposables.push(geo, eclipticMat);
 
-      const eclTex = makeSignLabelTexture('☉', getLang() === 'en' ? 'ECLIPTIC' : '黄道');
+      const eclTex = makeSignLabelTexture(getLang() === 'en' ? 'ECLIPTIC' : '黄道', 'rgba(245,215,142,0.9)');
       const eclMat = new THREE.SpriteMaterial({ map: eclTex, transparent: true, depthWrite: false, opacity: 0.8 });
       const eclSprite = new THREE.Sprite(eclMat);
       const eclAngle = THREE.MathUtils.degToRad(115);
@@ -450,7 +450,7 @@ export default function ZodiacScene() {
         .multiplyScalar(1 / nodeVs.length);
       centers.push(center.clone());
 
-      const nameTex = makeSignLabelTexture(sign.symbol, getLang() === 'en' ? sign.nameEn : sign.name);
+      const nameTex = makeSignLabelTexture(getLang() === 'en' ? sign.nameEn : sign.name);
       const nameMat = new THREE.SpriteMaterial({
         map: nameTex,
         transparent: true,
@@ -492,19 +492,7 @@ export default function ZodiacScene() {
     let sunLabel: THREE.Sprite | null = null;
     const buildSunLabel = (): THREE.Sprite => {
       const text = getLang() === 'en' ? `Sun in ${sunSign.nameEn}` : `太阳此刻在 ${sunSign.name}`;
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 64;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.font = '500 24px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'rgba(252,211,77,0.95)';
-        ctx.fillText(text, 128, 34);
-      }
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
+      const tex = makeSignLabelTexture(text, 'rgba(252,211,77,0.95)');
       const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
       const label = new THREE.Sprite(mat);
       label.position.copy(sunPos.clone().normalize().multiplyScalar(R + 14));
@@ -520,27 +508,19 @@ export default function ZodiacScene() {
       SIGNS.forEach((sign, idx) => {
         const vis = signVis[idx];
         const old = vis.nameMat.map;
-        vis.nameMat.map = makeSignLabelTexture(sign.symbol, getLang() === 'en' ? sign.nameEn : sign.name);
+        vis.nameMat.map = makeSignLabelTexture(getLang() === 'en' ? sign.nameEn : sign.name);
         vis.nameMat.needsUpdate = true;
         old?.dispose();
       });
       if (sunLabel) {
-        const oldMap = (sunLabel.material as THREE.SpriteMaterial).map;
-        const tex = document.createElement('canvas');
-        tex.width = 256;
-        tex.height = 64;
-        const ctx = tex.getContext('2d');
-        if (ctx) {
-          ctx.font = '500 24px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = 'rgba(252,211,77,0.95)';
-          ctx.fillText(getLang() === 'en' ? `Sun in ${sunSign.nameEn}` : `太阳此刻在 ${sunSign.name}`, 128, 34);
-        }
-        const newTex = new THREE.CanvasTexture(tex);
-        newTex.colorSpace = THREE.SRGBColorSpace;
-        (sunLabel.material as THREE.SpriteMaterial).map = newTex;
-        (sunLabel.material as THREE.SpriteMaterial).needsUpdate = true;
+        const mat = sunLabel.material as THREE.SpriteMaterial;
+        const oldMap = mat.map;
+        const newTex = makeSignLabelTexture(
+          getLang() === 'en' ? `Sun in ${sunSign.nameEn}` : `太阳此刻在 ${sunSign.name}`,
+          'rgba(252,211,77,0.95)'
+        );
+        mat.map = newTex;
+        mat.needsUpdate = true;
         oldMap?.dispose();
         disposables.push(newTex);
       }
@@ -724,7 +704,7 @@ export default function ZodiacScene() {
   return (
     <div ref={wrapRef} className="absolute inset-0" aria-label={L('十二星座场景', 'Zodiac scene')}>
       {/* top quick-focus chips */}
-      <div className="pointer-events-auto absolute left-1/2 top-[calc(var(--ui-safe-top)+3.4rem)] z-30 flex max-w-[94vw] -translate-x-1/2 flex-wrap justify-center gap-1.5">
+      <div className="pointer-events-auto absolute left-1/2 top-[calc(var(--ui-safe-top)+3.4rem)] z-30 flex max-w-[94vw] -translate-x-1/2 flex-wrap justify-center gap-1.5 portrait:top-[132px]">
         {SIGNS.map((s, i) => {
           const active = focused === i || selected === i;
           return (
@@ -740,7 +720,6 @@ export default function ZodiacScene() {
                   : 'border-white/10 bg-black/40 text-zinc-300 hover:border-amber-200/30 hover:text-amber-100')
               }
             >
-              <span aria-hidden style={{ color: s.color }}>{s.symbol}</span>
               {L(s.name, s.nameEn)}
             </button>
           );
@@ -764,8 +743,16 @@ export default function ZodiacScene() {
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="text-3xl leading-none" style={{ color: sign.color }} aria-hidden>
-                {sign.symbol}
+              <span
+                className="flex h-11 w-11 items-center justify-center rounded-xl border"
+                style={{
+                  color: ELEMENT_COLOR[sign.element],
+                  borderColor: `${ELEMENT_COLOR[sign.element]}44`,
+                  background: `${ELEMENT_COLOR[sign.element]}14`,
+                }}
+                aria-hidden
+              >
+                {ElementIcon && <ElementIcon className="h-5 w-5" />}
               </span>
               <div>
                 <h2 className="text-base font-semibold tracking-wider text-amber-100">
