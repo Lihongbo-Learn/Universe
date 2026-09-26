@@ -226,6 +226,7 @@ export default function ZodiacScene() {
   const focusedRef = useRef<number | null>(null);
   const openSignRef = useRef<(i: number) => void>(() => {});
   const closeSignRef = useRef<() => void>(() => {});
+  const emptyClickRef = useRef<() => void>(() => {});
   const signFlightRef = useRef<number | null>(null); // UI → render-loop bridge
 
   useEffect(() => {
@@ -271,6 +272,10 @@ export default function ZodiacScene() {
   useEffect(() => {
     openSignRef.current = (i: number) => openSign(i);
     closeSignRef.current = closeCard;
+    emptyClickRef.current = () => {
+      closeCard();
+      setFocused(null);
+    };
   });
 
   useEffect(() => {
@@ -573,7 +578,10 @@ export default function ZodiacScene() {
       const dt = performance.now() - downT;
       if (moved > 6 || dt > 550) return; // a drag, not a click
       const idx = pickSign(ev);
-      if (idx === null) return;
+      if (idx === null) {
+        emptyClickRef.current(); // click on empty sky — deselect like the solar scene
+        return;
+      }
       cardOriginRef.current = { x: downX, y: downY };
       openSignRef.current(idx);
     };
