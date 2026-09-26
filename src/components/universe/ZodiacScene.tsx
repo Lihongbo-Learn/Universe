@@ -212,6 +212,113 @@ const ELEMENT_LABEL: Record<ElementKind, [string, string]> = {
   water: ['水象', 'Water'],
 };
 
+
+/* -------------------------- mini star chart (card) -------------------------- */
+const CHART_W = 272;
+const CHART_H = 150;
+
+function ZodiacChart({ sign }: { sign: ZodiacSign }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = CHART_W * dpr;
+    canvas.height = CHART_H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, CHART_W, CHART_H);
+
+    // sky view: RA grows to the LEFT (as on real sky charts), Dec points up
+    const pts = sign.stars.map(([ra, dec, mag]) => ({ x: -(ra / 24) * 360, y: dec, mag }));
+    const pad = 20;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    pts.forEach((p) => {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+    });
+    const spanX = Math.max(maxX - minX, 4);
+    const spanY = Math.max(maxY - minY, 4);
+    const scale = Math.min((CHART_W - pad * 2) / spanX, (CHART_H - pad * 2) / spanY);
+    const ox = (CHART_W - spanX * scale) / 2;
+    const oy = (CHART_H - spanY * scale) / 2;
+    const sx = (x: number) => ox + (x - minX) * scale;
+    const sy = (y: number) => CHART_H - (oy + (y - minY) * scale);
+
+    // frame + faint grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(6.5, 6.5, CHART_W - 13, CHART_H - 13);
+    ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+    for (let gx = 1; gx < 4; gx++) {
+      const x = 6.5 + ((CHART_W - 13) / 4) * gx;
+      ctx.beginPath();
+      ctx.moveTo(x, 6.5);
+      ctx.lineTo(x, CHART_H - 6.5);
+      ctx.stroke();
+    }
+    for (let gy = 1; gy < 3; gy++) {
+      const y = 6.5 + ((CHART_H - 13) / 3) * gy;
+      ctx.beginPath();
+      ctx.moveTo(6.5, y);
+      ctx.lineTo(CHART_W - 6.5, y);
+      ctx.stroke();
+    }
+
+    // stick lines
+    ctx.strokeStyle = 'rgba(157,176,204,0.6)';
+    ctx.lineWidth = 1.2;
+    sign.lines.forEach(([a, b]) => {
+      ctx.beginPath();
+      ctx.moveTo(sx(pts[a].x), sy(pts[a].y));
+      ctx.lineTo(sx(pts[b].x), sy(pts[b].y));
+      ctx.stroke();
+    });
+
+    // stars: halo + core, size scaled by magnitude
+    pts.forEach((p) => {
+      const x = sx(p.x);
+      const y = sy(p.y);
+      const halo = Math.max(3.5, 9 - p.mag * 1.6);
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, halo);
+      grad.addColorStop(0, 'rgba(235,242,255,0.95)');
+      grad.addColorStop(0.35, 'rgba(190,210,240,0.35)');
+      grad.addColorStop(1, 'rgba(190,210,240,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, halo, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#eef4ff';
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.2, 2.6 - p.mag * 0.35), 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }, [sign]);
+
+  const lang = useLang();
+  return (
+    <div className="mt-4 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+      <canvas
+        ref={canvasRef}
+        style={{ width: '100%', height: CHART_H }}
+        className="block"
+        role="img"
+        aria-label={lang === 'en' ? `${sign.nameEn} star chart` : `${sign.name}星图`}
+      />
+      <p className="border-t border-white/5 px-3 py-1.5 text-[10px] tracking-wider text-zinc-500">
+        {L('星图 · 北在上 · 天空视角（东西翻转）', 'Star chart · North up · sky view (east–west flipped)')}
+      </p>
+    </div>
+  );
+}
+
 export default function ZodiacScene() {
   useLang();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -829,6 +936,8 @@ export default function ZodiacScene() {
               </dd>
             </div>
           </dl>
+
+          <ZodiacChart sign={sign} />
 
           <p className="mt-4 text-[11.5px] leading-relaxed text-zinc-300">{L(sign.story, sign.storyEn)}</p>
 
