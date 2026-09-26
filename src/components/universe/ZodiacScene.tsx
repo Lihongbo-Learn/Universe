@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { X, Flame, Mountain, Wind, Droplets } from 'lucide-react';
+import { X, Flame, Mountain, Wind, Droplets, Expand } from 'lucide-react';
 import { L, useLang, getLang, subscribeLang } from './i18n';
 import { playEnter, playExit, setOriginFromPoint } from './originTransition';
 import { playEventSound } from './soundscape';
@@ -283,9 +283,20 @@ function ZodiacChart({ sign }: { sign: ZodiacSign }) {
     });
 
     // stars: halo + core, size scaled by magnitude
-    pts.forEach((p) => {
+    let bestIdx = 0;
+    pts.forEach((p, i) => {
+      if (p.mag < pts[bestIdx].mag) bestIdx = i;
+    });
+    pts.forEach((p, i) => {
       const x = sx(p.x);
       const y = sy(p.y);
+      if (i === bestIdx) {
+        const label = getLang() === 'en' ? sign.brightestEn : sign.brightest.split(' ')[0];
+        ctx.font = '500 11px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(252,211,77,0.95)';
+        ctx.fillText(label, x, y - 12);
+      }
       const halo = Math.max(3.5, 9 - p.mag * 1.6);
       const grad = ctx.createRadialGradient(x, y, 0, x, y, halo);
       grad.addColorStop(0, 'rgba(235,242,255,0.95)');
@@ -335,6 +346,7 @@ export default function ZodiacScene() {
   const closeSignRef = useRef<() => void>(() => {});
   const emptyClickRef = useRef<() => void>(() => {});
   const deselectRef = useRef<() => void>(() => {});
+  const panoramaReqRef = useRef(false); // Esc / 返回全景按钮 → 渲染循环
   const signFlightRef = useRef<number | null>(null); // UI → render-loop bridge
 
   useEffect(() => {
@@ -701,7 +713,7 @@ export default function ZodiacScene() {
       signFlightRef.current = null;
       controls.enabled = true;
     };
-    const escReturnRef = { current: false }; // set when a panorama return is requested
+
     const onPointerLeave = () => {
       hoverIdx = null;
       renderer.domElement.style.cursor = 'grab';
@@ -716,7 +728,7 @@ export default function ZodiacScene() {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== 'Escape') return;
       signFlightRef.current = null;
-      escReturnRef.current = true;
+      panoramaReqRef.current = true;
       deselectRef.current();
     };
     window.addEventListener('keydown', onKey);
@@ -752,9 +764,9 @@ export default function ZodiacScene() {
       const dt = Math.min(clock.getDelta(), 0.1);
       frame++;
 
-      // Esc → glide back to the overview (UI → loop bridge)
-      if (escReturnRef.current) {
-        escReturnRef.current = false;
+      // Esc / 返回全景按钮 → glide back to the overview (UI → loop bridge)
+      if (panoramaReqRef.current) {
+        panoramaReqRef.current = false;
         flightFrom.copy(camera.position);
         flightFromTgt.copy(controls.target);
         flightTo.set(0, 42, 124);
@@ -885,6 +897,25 @@ export default function ZodiacScene() {
           );
         })}
       </div>
+
+      {/* 返回全景（聚焦时显示，触屏无 Esc 的替代） */}
+      {focused !== null && (
+        <button
+          type="button"
+          onClick={(e) => {
+            cardOriginRef.current = { x: e.clientX, y: e.clientY };
+            panoramaReqRef.current = true;
+            closeCard();
+            setFocused(null);
+            playEventSound('click');
+          }}
+          aria-label={L('返回全景视角', 'Return to overview')}
+          className="uni-anim-fade-up pointer-events-auto absolute bottom-[calc(3.4rem+var(--ui-safe-bottom))] left-1/2 z-30 flex min-h-[36px] -translate-x-1/2 items-center gap-1.5 rounded-full border border-amber-200/30 bg-black/55 px-3.5 text-[11px] font-medium text-amber-100 backdrop-blur-xl transition-all duration-300 hover:border-amber-200/50 hover:bg-black/70 [@media(pointer:coarse)]:min-h-[40px]"
+        >
+          <Expand className="h-3.5 w-3.5" aria-hidden />
+          {L('返回全景', 'Overview')}
+        </button>
+      )}
 
       {/* hint */}
       <div className="pointer-events-none absolute bottom-[calc(1.1rem+var(--ui-safe-bottom))] left-1/2 z-30 w-max max-w-[92vw] -translate-x-1/2 rounded-full border border-white/10 bg-black/45 px-4 py-1.5 text-center text-[11px] tracking-wide text-zinc-400 backdrop-blur-xl">

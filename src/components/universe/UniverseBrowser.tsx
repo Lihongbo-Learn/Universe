@@ -352,6 +352,19 @@ export default function UniverseBrowser() {
     return () => window.removeEventListener('keydown', onKey);
   }, [switchTo, handleSoundToggle, openSettings]);
 
+  /* volume popover: Esc closes (capture phase, also swallows the zodiac Esc) */
+  useEffect(() => {
+    if (!audioPanelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        toggleAudioPanel();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [audioPanelOpen, toggleAudioPanel]);
+
   /* settings dialog: Esc closes (capture phase — works even when a control inside has focus) */
   useEffect(() => {
     if (!settingsOpen) return;
