@@ -28,6 +28,7 @@ import {
 import { createLensingPass } from './lensingPass';
 import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
 import { playEventSound } from '@/components/universe/soundscape';
+import { L, useLang } from './i18n';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -58,10 +59,10 @@ const NEBULAE: NebulaSpec[] = [
 ];
 
 /** F13 — named camera vantage points (target stays at the hole). */
-const VIEW_PRESETS: { key: string; label: string; en: string; position: [number, number, number]; hint: string; icon: LucideIcon }[] = [
-  { key: 'side', label: '正视', en: 'EDGE-ON', position: [0, 1.5, 30.5], hint: '赤道面侧视：光弧与透镜最壮观', icon: Eye },
-  { key: 'top', label: '俯瞰', en: 'OVERHEAD', position: [0, 40, 7], hint: '自上方俯视吸积盘全貌', icon: Globe },
-  { key: 'skim', label: '掠过', en: 'SKIMMER', position: [10.5, 2.4, 14.5], hint: '近距离低角度贴近盘面', icon: Wind },
+const VIEW_PRESETS: { key: string; label: string; labelEn: string; en: string; position: [number, number, number]; hint: string; hintEn: string; icon: LucideIcon }[] = [
+  { key: 'side', label: '正视', labelEn: 'edge-on view', en: 'EDGE-ON', position: [0, 1.5, 30.5], hint: '赤道面侧视：光弧与透镜最壮观', hintEn: 'Edge-on along the equatorial plane: light arcs and lensing at their most spectacular', icon: Eye },
+  { key: 'top', label: '俯瞰', labelEn: 'top-down view', en: 'OVERHEAD', position: [0, 40, 7], hint: '自上方俯视吸积盘全貌', hintEn: 'Look down from above at the full accretion disk', icon: Globe },
+  { key: 'skim', label: '掠过', labelEn: 'skim pass', en: 'SKIMMER', position: [10.5, 2.4, 14.5], hint: '近距离低角度贴近盘面', hintEn: 'A close, low-angle skim along the disk surface', icon: Wind },
 ];
 const VIEW_TWEEN_DURATION = 1.7; // seconds, easeInOutCubic
 
@@ -87,13 +88,14 @@ interface LightRaySpec {
   color: [number, number, number];
   css: string;
   label: string;
+  labelEn: string;
 }
 
 const LIGHT_RAY_SPECS: LightRaySpec[] = [
-  { b: 6.5, color: [0.92, 0.94, 1.0], css: '#ebf0ff', label: '轻微偏折' },
-  { b: 4.2, color: [1.0, 0.78, 0.42], css: '#ffc76b', label: '明显弯折' },
-  { b: 2.9, color: [0.42, 0.9, 1.0], css: '#6be5ff', label: '绕行光子球' },
-  { b: 2.3, color: [1.0, 0.45, 0.4], css: '#ff7368', label: '视界俘获' },
+  { b: 6.5, color: [0.92, 0.94, 1.0], css: '#ebf0ff', label: '轻微偏折', labelEn: 'slight deflection' },
+  { b: 4.2, color: [1.0, 0.78, 0.42], css: '#ffc76b', label: '明显弯折', labelEn: 'strong bending' },
+  { b: 2.9, color: [0.42, 0.9, 1.0], css: '#6be5ff', label: '绕行光子球', labelEn: 'orbits the photon sphere' },
+  { b: 2.3, color: [1.0, 0.45, 0.4], css: '#ff7368', label: '视界俘获', labelEn: 'captured by the horizon' },
 ];
 
 interface LightRayPath {
@@ -340,6 +342,7 @@ function StatRow({ icon: Icon, label, sub }: { icon: LucideIcon; label: string; 
 }
 
 export default function BlackHoleScene() {
+  useLang(); // re-render on language change so all L() texts and dilationText update
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Mutable refs read by the render loop — UI state never re-creates the scene.
@@ -962,7 +965,7 @@ export default function BlackHoleScene() {
   // F16 — Schwarzschild time dilation: dτ/dt = √(1 − Rs/r), r in Rs units
   const dilationFactor = Math.sqrt(Math.max(0, 1 - 1 / Math.max(timeDilationR, 1.0001)));
   const dilatedMinutes = 60 * dilationFactor;
-  const dilationText = dilatedMinutes >= 1 ? `${dilatedMinutes.toFixed(1)} 分钟` : `${Math.round(dilatedMinutes * 60)} 秒`;
+  const dilationText = dilatedMinutes >= 1 ? L(`${dilatedMinutes.toFixed(1)} 分钟`, `${dilatedMinutes.toFixed(1)} min`) : L(`${Math.round(dilatedMinutes * 60)} 秒`, `${Math.round(dilatedMinutes * 60)} s`);
 
   return (
     <div ref={wrapRef} className="absolute inset-0 overflow-hidden">
@@ -971,37 +974,37 @@ export default function BlackHoleScene() {
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#020208]">
           <div className="mx-4 max-w-sm rounded-2xl border border-white/10 bg-black/45 p-6 text-center backdrop-blur-xl">
             <AlertTriangle className="mx-auto h-6 w-6 text-amber-300" aria-hidden />
-            <p className="mt-3 text-sm font-medium text-zinc-200">WebGL 初始化失败</p>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-500">当前浏览器或设备不支持 WebGL，无法渲染黑洞场景，请更换浏览器或开启硬件加速后重试。</p>
+            <p className="mt-3 text-sm font-medium text-zinc-200">{L('WebGL 初始化失败', 'WebGL initialization failed')}</p>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-500">{L('当前浏览器或设备不支持 WebGL，无法渲染黑洞场景，请更换浏览器或开启硬件加速后重试。', 'Your browser or device does not support WebGL, so the black hole scene cannot be rendered. Try a different browser or enable hardware acceleration.')}</p>
           </div>
         </div>
       ) : (
         <>
           {/* ---------------- top-right stats card ---------------- */}
-          <div className="pointer-events-none absolute right-4 top-20 z-20 w-44 rounded-2xl border border-white/10 bg-black/45 p-3.5 shadow-lg shadow-black/40 backdrop-blur-xl portrait:right-3 portrait:top-[138px]">
+          <div className="uni-anim-fade-up pointer-events-none absolute right-4 top-20 z-20 w-44 rounded-2xl border border-white/10 bg-black/45 p-3.5 shadow-lg shadow-black/40 backdrop-blur-xl portrait:right-3 portrait:top-[138px]">
             <p className="text-[10px] font-semibold tracking-[0.28em] text-amber-200/70">GARGANTUA</p>
             <div className="mt-3 space-y-3">
-              <StatRow icon={Cpu} label="自定义 Shader ×2" sub="吸积盘 + 引力透镜" />
-              <StatRow icon={Layers} label="屏幕空间后处理" sub="透镜 → 辉光 → 输出" />
-              <StatRow icon={Zap} label="多普勒成束" sub="迎光侧增亮偏蓝" />
+              <StatRow icon={Cpu} label={L('自定义 Shader ×2', 'Custom shaders ×2')} sub={L('吸积盘 + 引力透镜', 'Accretion disk + gravitational lensing')} />
+              <StatRow icon={Layers} label={L('屏幕空间后处理', 'Screen-space post-processing')} sub={L('透镜 → 辉光 → 输出', 'Lensing → glow → output')} />
+              <StatRow icon={Zap} label={L('多普勒成束', 'Doppler beaming')} sub={L('迎光侧增亮偏蓝', 'Approaching side brightened and blueshifted')} />
             </div>
           </div>
 
           {/* ---------------- left-center camera view presets (F13) ---------------- */}
           <div
-            className="absolute left-4 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-1 rounded-2xl border border-white/10 bg-black/45 p-1.5 shadow-lg shadow-black/40 backdrop-blur-xl portrait:left-3"
+            className="uni-anim-slide-left absolute left-4 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-1 rounded-2xl border border-white/10 bg-black/45 p-1.5 shadow-lg shadow-black/40 backdrop-blur-xl portrait:left-3"
             role="group"
-            aria-label="相机视角预设"
+            aria-label={L('相机视角预设', 'Camera view presets')}
           >
-            <p className="pb-0.5 pt-0.5 text-center text-[9px] font-semibold tracking-[0.22em] text-zinc-500">视角</p>
+            <p className="pb-0.5 pt-0.5 text-center text-[9px] font-semibold tracking-[0.22em] text-zinc-500">{L('视角', 'VIEW')}</p>
             {VIEW_PRESETS.map((p, i) => {
               const PresetIcon = p.icon;
               return (
               <button
                 key={p.key}
                 type="button"
-                title={`${p.hint}（${p.en}）`}
-                aria-label={`切换到${p.label}视角`}
+                title={L(`${p.hint}（${p.en}）`, `${p.hintEn} (${p.en})`)}
+                aria-label={L(`切换到${p.label}视角`, `Switch to the ${p.labelEn}`)}
                 onClick={() => {
                   viewRequestRef.current = i;
                   playEventSound('click'); // F23
@@ -1009,7 +1012,7 @@ export default function BlackHoleScene() {
                 className="flex min-h-[52px] w-14 flex-col items-center justify-center gap-1 rounded-xl text-zinc-400 transition-all duration-200 hover:bg-white/10 hover:text-amber-200 hover:shadow-[inset_0_0_0_1px_rgba(252,211,77,0.25)]"
               >
                 <PresetIcon className="h-4 w-4" aria-hidden />
-                <span className="text-[10px] font-medium">{p.label}</span>
+                <span className="text-[10px] font-medium">{L(p.label, p.en)}</span>
               </button>
               );
             })}
@@ -1019,12 +1022,12 @@ export default function BlackHoleScene() {
           <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex flex-col items-center gap-2.5 px-4 portrait:bottom-[calc(1.25rem+var(--ui-safe-bottom))]">
             {lightDemoOn && (
               <div
-                className="flex max-w-[94vw] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-black/50 px-3.5 py-1.5 shadow-lg shadow-black/40 backdrop-blur-xl"
+                className="uni-anim-fade-in flex max-w-[94vw] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-black/50 px-3.5 py-1.5 shadow-lg shadow-black/40 backdrop-blur-xl"
                 role="status"
-                aria-label="光线测地线图例"
+                aria-label={L('光线测地线图例', 'Light-ray geodesic legend')}
               >
                 <span className="text-[9.5px] font-semibold tracking-[0.14em] text-zinc-300">
-                  光子测地线 · b꜀ = 3√3/2 · Rs ≈ 2.60 Rs
+                  {L('光子测地线', 'Photon geodesics')} · b꜀ = 3√3/2 · Rs ≈ 2.60 Rs
                 </span>
                 {LIGHT_RAY_SPECS.map((s) => (
                   <span key={s.b} className="flex items-center gap-1 text-[9.5px] text-zinc-400">
@@ -1033,29 +1036,29 @@ export default function BlackHoleScene() {
                       style={{ backgroundColor: s.css, boxShadow: `0 0 6px ${s.css}` }}
                       aria-hidden
                     />
-                    b = {s.b} Rs · {s.label}
+                    b = {s.b} Rs · {L(s.label, s.labelEn)}
                   </span>
                 ))}
               </div>
             )}
-            <p className="text-center text-[10px] tracking-wide text-zinc-500"><span className="[@media(pointer:coarse)]:hidden">拖拽环绕 · 滚轮缩放（可中断飞行）· 左侧切换预设视角 · 侧倾观察光弧与背景弯折</span><span className="hidden [@media(pointer:coarse)]:inline">单指拖拽环绕 · 双指缩放 · 左侧切换预设视角</span></p>
-            <div className="pointer-events-auto relative flex max-w-[94vw] flex-wrap items-center justify-center gap-4 rounded-2xl border border-white/10 bg-black/45 px-5 py-3 shadow-lg shadow-black/40 backdrop-blur-xl portrait:gap-x-3 portrait:gap-y-2 portrait:px-3 portrait:py-2.5 sm:gap-6">
+            <p className="text-center text-[10px] tracking-wide text-zinc-500"><span className="[@media(pointer:coarse)]:hidden">{L('拖拽环绕 · 滚轮缩放（可中断飞行）· 左侧切换预设视角 · 侧倾观察光弧与背景弯折', 'Drag to orbit · scroll to zoom (interrupts flights) · switch presets on the left · tilt to see the light arcs and background bending')}</span><span className="hidden [@media(pointer:coarse)]:inline">{L('单指拖拽环绕 · 双指缩放 · 左侧切换预设视角', 'One-finger drag to orbit · pinch to zoom · switch presets on the left')}</span></p>
+            <div className="uni-anim-fade-up pointer-events-auto relative flex max-w-[94vw] flex-wrap items-center justify-center gap-4 rounded-2xl border border-white/10 bg-black/45 px-5 py-3 shadow-lg shadow-black/40 backdrop-blur-xl portrait:gap-x-3 portrait:gap-y-2 portrait:px-3 portrait:py-2.5 sm:gap-6">
               <div className="flex items-center gap-2.5">
                 <Orbit className="h-3.5 w-3.5 text-amber-300/80" aria-hidden />
-                <Switch checked={lensOn} onCheckedChange={handleLensChange} aria-label="切换引力透镜" className="cursor-pointer data-[state=checked]:bg-amber-400" />
-                <span className="text-xs text-zinc-300">引力透镜</span>
+                <Switch checked={lensOn} onCheckedChange={handleLensChange} aria-label={L('切换引力透镜', 'Toggle gravitational lensing')} className="cursor-pointer data-[state=checked]:bg-amber-400" />
+                <span className="text-xs text-zinc-300">{L('引力透镜', 'Gravitational lensing')}</span>
               </div>
               <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
               <div className="flex items-center gap-2.5">
                 <Gauge className="h-3.5 w-3.5 text-amber-300/80" aria-hidden />
-                <span className="whitespace-nowrap text-xs text-zinc-300">吸积盘速度</span>
+                <span className="whitespace-nowrap text-xs text-zinc-300">{L('吸积盘速度', 'Accretion disk speed')}</span>
                 {/* F31 — pause / resume the disk clock */}
                 <button
                   type="button"
                   onClick={handleTogglePause}
                   aria-pressed={speed === 0}
-                  aria-label={speed === 0 ? '恢复吸积盘旋转' : '暂停吸积盘旋转'}
-                  title={speed === 0 ? '恢复吸积盘旋转' : '暂停吸积盘旋转'}
+                  aria-label={speed === 0 ? L('恢复吸积盘旋转', 'Resume disk rotation') : L('暂停吸积盘旋转', 'Pause disk rotation')}
+                  title={speed === 0 ? L('恢复吸积盘旋转', 'Resume disk rotation') : L('暂停吸积盘旋转', 'Pause disk rotation')}
                   className={cn(
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all duration-200',
                     speed === 0
@@ -1071,18 +1074,18 @@ export default function BlackHoleScene() {
                   max={2}
                   step={0.25}
                   onValueChange={handleSpeedChange}
-                  aria-label="吸积盘速度"
+                  aria-label={L('吸积盘速度', 'Accretion disk speed')}
                   className="w-24 [&_[data-slot=slider-range]]:bg-amber-400 sm:w-28"
                 />
                 <span className={cn('w-7 text-right font-mono text-xs tabular-nums', speed === 0 ? 'text-amber-300' : 'text-amber-200')}>
-                  {speed === 0 ? '暂停' : speed.toFixed(2).replace('.00', '').replace(/(\.\d)0$/, '$1')}
+                  {speed === 0 ? L('暂停', 'Paused') : speed.toFixed(2).replace('.00', '').replace(/(\.\d)0$/, '$1')}
                 </span>
               </div>
               <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
               <div className="flex items-center gap-2.5">
                 <Sparkles className="h-3.5 w-3.5 text-violet-300/80" aria-hidden />
-                <Switch checked={bloomOn} onCheckedChange={handleBloomChange} aria-label="切换辉光" className="cursor-pointer data-[state=checked]:bg-violet-400" />
-                <span className="text-xs text-zinc-300">辉光</span>
+                <Switch checked={bloomOn} onCheckedChange={handleBloomChange} aria-label={L('切换辉光', 'Toggle glow')} className="cursor-pointer data-[state=checked]:bg-violet-400" />
+                <span className="text-xs text-zinc-300">{L('辉光', 'Glow')}</span>
               </div>
               <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
               <button
@@ -1092,7 +1095,7 @@ export default function BlackHoleScene() {
                   playEventSound('click'); // F23
                 }}
                 aria-pressed={slingshotOn}
-                title="小行星双曲线掠过演示：近黑洞时被引力甩弯（时间流速与吸积盘速度滑杆联动）"
+                title={L('小行星双曲线掠过演示：近黑洞时被引力甩弯（时间流速与吸积盘速度滑杆联动）', 'Asteroid hyperbolic flyby demo: bent by gravity as it nears the hole (time flow is coupled to the accretion-disk speed slider)')}
                 className={cn(
                   'flex min-h-[32px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all duration-200',
                   slingshotOn
@@ -1101,14 +1104,14 @@ export default function BlackHoleScene() {
                 )}
               >
                 <Rocket className="h-3.5 w-3.5" aria-hidden />
-                引力弹弓
+                {L('引力弹弓', 'Gravity slingshot')}
               </button>
               <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
               <button
                 type="button"
                 onClick={handleLightDemo}
                 aria-pressed={lightDemoOn}
-                title="光子测地线演示：四束不同瞄准距离 b 的光线掠过黑洞——被弯折、绕行光子球或俘获坠入视界（时间流速随吸积盘速度滑杆联动）"
+                title={L('光子测地线演示：四束不同瞄准距离 b 的光线掠过黑洞——被弯折、绕行光子球或俘获坠入视界（时间流速随吸积盘速度滑杆联动）', 'Photon geodesic demo: four rays with different impact parameters b pass the hole — bent, orbiting the photon sphere, or captured through the horizon (time flow is coupled to the accretion-disk speed slider)')}
                 className={cn(
                   'flex min-h-[32px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all duration-200',
                   lightDemoOn
@@ -1117,7 +1120,7 @@ export default function BlackHoleScene() {
                 )}
               >
                 <Waypoints className="h-3.5 w-3.5" aria-hidden />
-                光线演示
+                {L('光线演示', 'Light-ray demo')}
               </button>
               <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
               <button
@@ -1135,20 +1138,20 @@ export default function BlackHoleScene() {
                 )}
               >
                 <Info className="h-3.5 w-3.5" aria-hidden />
-                科学注释
+                {L('科学注释', 'Science notes')}
               </button>
 
               {/* -------- science annotation card (F8) -------- */}
               {showScience && (
-                <div className="universe-scroll absolute bottom-full left-1/2 mb-3 max-h-[calc(100dvh-130px)] w-[330px] max-w-[86vw] -translate-x-1/2 overflow-y-auto rounded-2xl border border-white/10 bg-black/65 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:left-3 portrait:right-3 portrait:w-auto portrait:max-w-none portrait:translate-x-0">
+                <div className="uni-anim-scale-in universe-scroll absolute bottom-full left-1/2 mb-3 max-h-[calc(100dvh-130px)] w-[330px] max-w-[86vw] -translate-x-1/2 overflow-y-auto rounded-2xl border border-white/10 bg-black/65 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:left-3 portrait:right-3 portrait:w-auto portrait:max-w-none portrait:translate-x-0">
                   <p className="text-[10px] font-semibold tracking-[0.28em] text-amber-200/70">SCIENCE NOTES</p>
-                  <div className="mt-3 space-y-2.5">
+                  <div className="uni-anim-stagger mt-3 space-y-2.5">
                     {[
-                      { icon: CircleDot, title: '事件视界', text: 'r = 2GM/c²。视界之内逃逸速度超过光速，任何信息都无法返回。' },
-                      { icon: Orbit, title: '光子球 · 光子环', text: 'r = 1.5 Rs。光在此可绕黑洞做圆周运动，勾出细细的光子环。' },
-                      { icon: Gauge, title: 'ISCO 内缘', text: 'r = 3 Rs。最内稳定圆轨道，正是吸积盘白热内缘所在。' },
-                      { icon: Timer, title: '引力时间膨胀', text: '引力越强时间越慢——远处观察者看你贴近视界，会看到你越来越慢、逐渐冻结。' },
-                      { icon: Zap, title: '多普勒成束', text: '盘内物质以近光速转动，朝向观察者的一侧被相对论性增亮、偏蓝。' },
+                      { icon: CircleDot, title: L('事件视界', 'Event horizon'), text: L('r = 2GM/c²。视界之内逃逸速度超过光速，任何信息都无法返回。', 'r = 2GM/c². Inside the horizon the escape velocity exceeds the speed of light — no information can return.') },
+                      { icon: Orbit, title: L('光子球 · 光子环', 'Photon sphere · photon ring'), text: L('r = 1.5 Rs。光在此可绕黑洞做圆周运动，勾出细细的光子环。', 'r = 1.5 Rs. Light can circle the hole here, tracing out the thin photon ring.') },
+                      { icon: Gauge, title: L('ISCO 内缘', 'ISCO inner edge'), text: L('r = 3 Rs。最内稳定圆轨道，正是吸积盘白热内缘所在。', 'r = 3 Rs. The innermost stable circular orbit — exactly where the white-hot inner rim of the accretion disk lies.') },
+                      { icon: Timer, title: L('引力时间膨胀', 'Gravitational time dilation'), text: L('引力越强时间越慢——远处观察者看你贴近视界，会看到你越来越慢、逐渐冻结。', 'Stronger gravity slows time — as you hover near the horizon, a distant observer sees you slow down and gradually freeze.') },
+                      { icon: Zap, title: L('多普勒成束', 'Doppler beaming'), text: L('盘内物质以近光速转动，朝向观察者的一侧被相对论性增亮、偏蓝。', 'Disk matter orbits at near light speed; the side moving toward the observer is relativistically brightened and blueshifted.') },
                     ].map((row) => (
                       <div key={row.title} className="flex items-start gap-2.5">
                         <row.icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300/80" aria-hidden />
@@ -1164,7 +1167,7 @@ export default function BlackHoleScene() {
                     <div className="flex items-center justify-between gap-2">
                       <p className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-100">
                         <Hourglass className="h-3.5 w-3.5 text-amber-300/80" aria-hidden />
-                        时间膨胀计算器
+                        {L('时间膨胀计算器', 'Time dilation calculator')}
                       </p>
                       <p className="font-mono text-[10px] tabular-nums text-amber-200">r = {timeDilationR.toFixed(2)} Rs</p>
                     </div>
@@ -1174,18 +1177,18 @@ export default function BlackHoleScene() {
                       max={30}
                       step={0.05}
                       onValueChange={(vals) => setTimeDilationR(vals[0] ?? 3)}
-                      aria-label="距黑洞的距离（史瓦西半径倍数）"
+                      aria-label={L('距黑洞的距离（史瓦西半径倍数）', 'Distance from the hole (in Schwarzschild radii)')}
                       className="mt-2.5 w-full [&_[data-slot=slider-range]]:bg-amber-400"
                     />
                     <div className="mt-2 flex items-baseline justify-between gap-2">
-                      <span className="text-[10px] text-zinc-400">远处 1 小时 → 此处</span>
+                      <span className="text-[10px] text-zinc-400">{L('远处 1 小时 → 此处', '1 hour far away → here')}</span>
                       <span className="font-mono text-xs font-bold tabular-nums text-amber-200">{dilationText}</span>
                     </div>
                     <p className="mt-1.5 text-[9px] leading-relaxed text-zinc-500">
-                      dτ/dt = √(1 − Rs/r) = {(dilationFactor * 100).toFixed(1)}% —— 距视界越近，时间流速越慢
+                      dτ/dt = √(1 − Rs/r) = {(dilationFactor * 100).toFixed(1)}%{L(' —— 距视界越近，时间流速越慢', ' — the closer to the horizon, the slower time flows')}
                     </p>
                   </div>
-                  <p className="mt-3 border-t border-white/5 pt-2 text-right text-[9px] tracking-wider text-zinc-600">史瓦西度规 · 无自旋黑洞近似</p>
+                  <p className="mt-3 border-t border-white/5 pt-2 text-right text-[9px] tracking-wider text-zinc-600">{L('史瓦西度规 · 无自旋黑洞近似', 'Schwarzschild metric · non-spinning black hole approximation')}</p>
                 </div>
               )}
             </div>

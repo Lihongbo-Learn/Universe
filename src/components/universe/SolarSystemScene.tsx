@@ -46,6 +46,7 @@ import {
   simTimeToDateMs,
   type BodyInfo,
 } from '@/components/universe/planetData';
+import { L, useLang, subscribeLang, getLang } from '@/components/universe/i18n';
 import { createFpsMeter } from '@/components/universe/fps';
 import { registerCapturer } from '@/components/universe/capture';
 import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
@@ -116,21 +117,30 @@ const parseISODate = (s: string): number | null => {
 const CON_CHIP_COLORS = ['#93c5fd', '#f0abfc', '#fda4af', '#fcd34d', '#fdba74', '#6ee7b7', '#c4b5fd'];
 
 /** F29 — real recorded sky events, one tap to time-travel */
-const SKY_EVENTS: { label: string; date: string; desc: string }[] = [
+const SKY_EVENTS: { label: string; labelEn: string; date: string; desc: string; descEn: string }[] = [
   {
     label: '木土大合',
+    labelEn: 'Great conjunction',
     date: '2020-12-21',
     desc: '2020 冬至：木星与土星黄经相差仅 0.1°，是 1623 年以来最接近的一次大合，两星几乎重合',
+    descEn:
+      'Winter solstice 2020: Jupiter and Saturn just 0.1° apart in ecliptic longitude — the closest great conjunction since 1623, the two planets nearly touching',
   },
   {
     label: '五星同现',
+    labelEn: 'Five planets visible',
     date: '2022-06-24',
     desc: '2022 年 6 月下旬：水星、金星、火星、木星、土星按黄经次序同时出现在黎明前天空',
+    descEn:
+      'Late June 2022: Mercury, Venus, Mars, Jupiter and Saturn lined up in order of ecliptic longitude in the pre-dawn sky',
   },
   {
     label: '金星凌日',
+    labelEn: 'Venus transit',
     date: '2012-06-06',
     desc: '2012 年金星从日面掠过（本世纪最后一次），下一次要等到 2117 年',
+    descEn:
+      'In 2012 Venus crossed the face of the Sun (the last time this century); the next one waits until 2117',
   },
 ];
 
@@ -172,23 +182,31 @@ interface CometNode {
 type ConstellationSpec = {
   name: string;
   en: string;
+  /** English display name (chips / card title / canvas sprite) */
+  nameEn: string;
   /** [RA hours, Dec degrees] per node star */
   stars: [number, number][];
   /** index pairs chained with faint lines */
   lines: [number, number][];
-  /** F15 archive-card facts */
+  /** F15 archive-card facts (zh + parallel En) */
   kind: string;
+  kindEn: string;
   brightest: string;
+  brightestEn: string;
   magnitude: string;
   distance: string;
+  distanceEn: string;
   bestSeason: string;
+  bestSeasonEn: string;
   story: string;
+  storyEn: string;
 };
 
 const CONSTELLATIONS: ConstellationSpec[] = [
   {
     name: '北斗七星',
     en: 'URSA MAJOR',
+    nameEn: 'Big Dipper',
     stars: [
       [11.062, 61.75],
       [11.031, 56.38],
@@ -207,16 +225,23 @@ const CONSTELLATIONS: ConstellationSpec[] = [
       [5, 6],
     ],
     kind: '北天星座 · 大熊座腰尾',
+    kindEn: "Northern · back and tail of Ursa Major",
     brightest: '玉衡 Alioth',
+    brightestEn: 'Alioth',
     magnitude: '1.77',
     distance: '约 83 光年',
+    distanceEn: '≈ 83 ly',
     bestSeason: '北半球春季（3–6 月）',
+    bestSeasonEn: 'Northern spring (Mar–Jun)',
     story:
       '勺口两星（天璇、天枢）连线延长五倍即是北极星，千百年来为旅人指北。它是大熊座的腰与尾，在北纬 40° 以上终年不落；中国古称「北斗」，古人以斗柄指向定四时——斗柄东指，天下皆春。',
+    storyEn:
+      "Extend the line joining the two stars at the bowl's mouth (Merak and Dubhe) five times to find Polaris — it has pointed travelers north for millennia. These stars form the back and tail of Ursa Major and never set above latitude 40°N; ancient Chinese astronomers read the seasons from the handle's direction — when it pointed east, spring had come to the world.",
   },
   {
     name: '猎户座',
     en: 'ORION',
+    nameEn: 'Orion',
     stars: [
       [5.919, 7.41],
       [5.418, 6.35],
@@ -238,16 +263,23 @@ const CONSTELLATIONS: ConstellationSpec[] = [
       [4, 6],
     ],
     kind: '赤道带 · 冬季之王',
+    kindEn: 'Equatorial · king of winter',
     brightest: '参宿七 Rigel',
+    brightestEn: 'Rigel',
     magnitude: '0.13',
     distance: '650–1,350 光年',
+    distanceEn: '650–1,350 ly',
     bestSeason: '北半球冬季（12–2 月）',
+    bestSeasonEn: 'Northern winter (Dec–Feb)',
     story:
       '腰带三星整齐排成一线，是冬夜最易辨认的星群；佩剑处的猎户座大星云 M42 是肉眼可见的恒星育婴室。希腊神话中他是被天蝎蜇死的猎人，至今仍与天蝎座隔着天球遥遥相对、永不相见。',
+    storyEn:
+      'The three belt stars line up in a neat row — the easiest pattern to recognize on winter nights; the Orion Nebula M42 at the "sword" is a stellar nursery visible to the naked eye. In Greek myth he was the hunter stung to death by the scorpion; to this day Orion and Scorpius stand at opposite ends of the sky, never to meet.',
   },
   {
     name: '仙后座',
     en: 'CASSIOPEIA',
+    nameEn: 'Cassiopeia',
     stars: [
       [0.153, 59.15],
       [0.675, 56.54],
@@ -262,16 +294,23 @@ const CONSTELLATIONS: ConstellationSpec[] = [
       [3, 4],
     ],
     kind: '北天拱极星座',
+    kindEn: 'Northern circumpolar',
     brightest: '策 Schedar',
+    brightestEn: 'Schedar',
     magnitude: '2.24',
     distance: '100–550 光年',
+    distanceEn: '100–550 ly',
     bestSeason: '秋冬（9–12 月，北天常显）',
+    bestSeasonEn: 'Autumn–winter (Sep–Dec; a fixture of northern skies)',
     story:
       '五颗亮星连成醒目的「W」，与北斗隔北极星遥遥相对，是寻找仙女座的跳板。1572 年第谷在此目睹超新星爆发并写下《论新星》，动摇了「天界永恒不变」的千年信条。',
+    storyEn:
+      'Five bright stars form a striking "W", facing the Big Dipper across the pole star — a stepping stone to finding Andromeda. In 1572 Tycho Brahe witnessed a supernova here and wrote De Nova Stella, shaking the millennia-old belief that the heavens were unchanging.',
   },
   {
     name: '狮子座',
     en: 'LEO',
+    nameEn: 'Leo',
     stars: [
       [10.139, 11.97], // α 轩辕十四 Regulus
       [11.818, 14.57], // β 五帝座一 Denebola
@@ -294,16 +333,23 @@ const CONSTELLATIONS: ConstellationSpec[] = [
       [3, 1],
     ],
     kind: '黄道星座 · 春夜之王',
+    kindEn: 'Zodiacal · king of spring nights',
     brightest: '轩辕十四 Regulus',
+    brightestEn: 'Regulus',
     magnitude: '1.35',
     distance: '约 79 光年',
+    distanceEn: '≈ 79 ly',
     bestSeason: '北半球春季（3–5 月）',
+    bestSeasonEn: 'Northern spring (Mar–May)',
     story:
       '头部六星反写的「镰刀」是这个星座的标志，轩辕十四几乎正好压在黄道上，被称为「王者之星」，月与行星时常从它身边掠过。每年 11 月中旬，坦普尔-塔特尔彗星的碎屑从狮口方向辐射而出，形成著名的狮子座流星雨，1833 年曾有「星陨如雨」的夜空盛宴。',
+    storyEn:
+      'The reversed "sickle" of six stars forming the head is this constellation\'s signature; Regulus sits almost exactly on the ecliptic — the "royal star" that the Moon and planets often pass close by. Every year in mid-November, debris from comet Tempel–Tuttle radiates out of the Lion\'s mouth in the famous Leonid meteor shower; in 1833 the night sky rained stars.',
   },
   {
     name: '天蝎座',
     en: 'SCORPIUS',
+    nameEn: 'Scorpius',
     stars: [
       [16.49, -26.43], // α 心宿二 Antares
       [17.56, -37.1], // λ 尾宿八 Shaula
@@ -330,16 +376,23 @@ const CONSTELLATIONS: ConstellationSpec[] = [
       [10, 1],
     ],
     kind: '黄道星座 · 夏夜毒蝎',
+    kindEn: 'Zodiacal · venomous scorpion of summer',
     brightest: '心宿二 Antares',
+    brightestEn: 'Antares',
     magnitude: '1.06',
     distance: '约 550 光年',
+    distanceEn: '≈ 550 ly',
     bestSeason: '北半球夏季（6–8 月）',
+    bestSeasonEn: 'Northern summer (Jun–Aug)',
     story:
       '一只弯钩形的巨蝎横卧在南天银河最浓处。心宿二是一颗红超巨星，色红如火，中国古称「大火」，《诗经》「七月流火」说的正是它西沉。希腊神话中蜇死猎户的天蝎，因此两座被众神安置在天球两端，永不同时出现——猎户座冬季升起时，天蝎座便落下。',
+    storyEn:
+      'A hook-shaped giant scorpion lies across the densest stretch of the southern Milky Way. Antares is a red supergiant, red as fire; the ancient Chinese called it "the Great Fire" — "in the seventh month the Fire Star sinks westward" in the Book of Songs describes just its setting. It is the scorpion that killed Orion in Greek myth, so the gods placed the two at opposite ends of the sky, never to rise together — when Orion climbs up in winter, Scorpius slips away.',
   },
   {
     name: '南十字座',
     en: 'CRUX',
+    nameEn: 'Crux',
     stars: [
       [12.443, -63.1], // α 十字架二 Acrux
       [12.795, -59.69], // β 十字架三 Mimosa
@@ -351,16 +404,23 @@ const CONSTELLATIONS: ConstellationSpec[] = [
       [1, 3],
     ],
     kind: '南天星座 · 航海罗盘',
+    kindEn: "Southern · navigator's compass",
     brightest: '十字架二 Acrux',
+    brightestEn: 'Acrux',
     magnitude: '0.76',
     distance: '约 320 光年',
+    distanceEn: '≈ 320 ly',
     bestSeason: '南半球秋季；北纬 25° 以南低空可见',
+    bestSeasonEn: 'Southern autumn; low on the horizon south of latitude 25°N',
     story:
       '全天 88 星座中最小的一个，四颗亮星组成醒目的南天十字。将长轴延长四倍半即是南天极——南半球没有北极星，千百年来水手靠它导航，它也被绘入多个南半球国家的国旗。十字架二是一对相距仅 6 天文单位的炽热双星。',
+    storyEn:
+      'The smallest of the 88 constellations: four bright stars forming a striking southern cross. Extend the long axis four and a half times to reach the south celestial pole — with no polar star in the south, sailors steered by it for centuries, and it appears on the flags of several southern nations. Acrux is a pair of blazing hot stars only 6 astronomical units apart.',
   },
   {
     name: '船底座',
     en: 'CARINA',
+    nameEn: 'Carina',
     stars: [
       [6.399, -52.7], // α 老人星 Canopus
       [9.22, -69.72], // β 南船五 Miaplacidus
@@ -376,12 +436,18 @@ const CONSTELLATIONS: ConstellationSpec[] = [
       [4, 2],
     ],
     kind: '南天星座 · 旧南船龙骨',
+    kindEn: 'Southern · keel of the old ship Argo',
     brightest: '老人星 Canopus',
+    brightestEn: 'Canopus',
     magnitude: '-0.74',
     distance: '约 310 光年',
+    distanceEn: '≈ 310 ly',
     bestSeason: '南半球夏夜；北纬 37° 以南可见',
+    bestSeasonEn: 'Southern summer nights; visible south of latitude 37°N',
     story:
       '老人星是全天第二亮恒星，中国古称「南极老人星」，长江流域冬夜偶见其贴地掠过，北方则终生无缘。船底座原是巨大的南船座（阿尔戈号）的一部分，18 世纪被拆分为船底、船帆、船尾三座。座内的海山二 Eta Carinae 质量超过太阳百倍，是离我们最近的超新星候选者之一。',
+    storyEn:
+      'Canopus is the second-brightest star in the entire sky; the ancient Chinese called it "the Old Man of the South Pole" — on winter nights it occasionally skims the horizon south of the Yangtze basin, while northern observers never see it at all. Carina was once part of the vast constellation Argo (the ship of Jason and the Argonauts), split into Carina, Vela and Puppis in the 18th century. Eta Carinae, over a hundred times the mass of the Sun, is one of the nearest supernova candidates.',
   },
 ];
 
@@ -535,6 +601,7 @@ const CHART_W = 272;
 const CHART_H = 150;
 
 function ConstellationChart({ con }: { con: ConstellationSpec }) {
+  const lang = useLang();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -625,16 +692,17 @@ function ConstellationChart({ con }: { con: ConstellationSpec }) {
         style={{ width: '100%', height: CHART_H }}
         className="block"
         role="img"
-        aria-label={`${con.name}星图`}
+        aria-label={lang === 'en' ? `${con.nameEn} star chart` : `${con.name}星图`}
       />
       <p className="border-t border-white/5 px-3 py-1.5 text-[10px] tracking-wider text-zinc-500">
-        星图 · 北在上 · 天空视角（东西翻转）
+        {L('星图 · 北在上 · 天空视角（东西翻转）', 'Star chart · North up · sky view (east–west flipped)')}
       </p>
     </div>
   );
 }
 
 export default function SolarSystemScene() {
+  const lang = useLang(); // re-render (and refresh L()/lang-conditional strings) on language switch
   const wrapRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
@@ -899,7 +967,7 @@ export default function SolarSystemScene() {
         disposables.push(pgeo, pmat);
         conHitPoints.push(points);
 
-        const nameTex = createConstellationLabelTexture(c.name);
+        const nameTex = createConstellationLabelTexture(getLang() === 'en' ? c.nameEn : c.name);
         const nameMat = new THREE.SpriteMaterial({
           map: nameTex,
           transparent: true,
@@ -1523,13 +1591,18 @@ export default function SolarSystemScene() {
       const conIdx = pickConstellation(ev);
       if (conIdx >= 0) {
         el.style.cursor = 'pointer';
-        showTip(ev, `${CONSTELLATIONS[conIdx].name} · 点击查看档案`);
+        showTip(
+          ev,
+          getLang() === 'en'
+            ? `${CONSTELLATIONS[conIdx].nameEn} · Click to open its card`
+            : `${CONSTELLATIONS[conIdx].name} · 点击查看档案`
+        );
         return;
       }
       const body = pickBody(ev);
       if (body) {
         el.style.cursor = 'pointer';
-        showTip(ev, `${body.name} · ${body.en}`);
+        showTip(ev, getLang() === 'en' ? body.en : `${body.name} · ${body.en}`);
       } else {
         el.style.cursor = 'grab';
         hideTip();
@@ -1601,7 +1674,13 @@ export default function SolarSystemScene() {
     const placedLabels: { sx: number; sy: number }[] = [];
 
     /* F26 — calendar display (written straight to the DOM, throttled) */
-    const dateFmt = new Intl.DateTimeFormat('zh-CN', {
+    const dateFmtZh = new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
+    const dateFmtEn = new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -1661,9 +1740,17 @@ export default function SolarSystemScene() {
         }
         memberOffsets.sort((a, b) => a.d - b.d); // list members along the ecliptic
         for (const m of memberOffsets) alignMembers.push(m.i);
-        const names = alignMembers.map((i) => PLANETS[i].name).join('·');
-        const prefix = bestCount >= 5 ? '✦ 五星连珠' : '四星聚拢';
-        el.textContent = `${prefix} · ${names} 聚于 ${Math.round(THREE.MathUtils.radToDeg(spanDeg))}° 黄经`;
+        const isEn = getLang() === 'en';
+        const names = alignMembers
+          .map((i) => (isEn ? PLANETS[i].en : PLANETS[i].name))
+          .join('·');
+        const prefix = bestCount >= 5
+          ? isEn ? '✦ Five-planet alignment' : '✦ 五星连珠'
+          : isEn ? 'Four-planet grouping' : '四星聚拢';
+        const spanDegDisplay = Math.round(THREE.MathUtils.radToDeg(spanDeg));
+        el.textContent = isEn
+          ? `${prefix} · ${names} within ${spanDegDisplay}° of ecliptic longitude`
+          : `${prefix} · ${names} 聚于 ${spanDegDisplay}° 黄经`;
         el.style.opacity = '1';
       } else {
         el.style.opacity = '0';
@@ -1769,7 +1856,10 @@ export default function SolarSystemScene() {
       if (++dateFrame >= 15) {
         dateFrame = 0;
         const el2 = dateTextRef.current;
-        if (el2) el2.textContent = dateFmt.format(new Date(simTimeToDateMs(simTime)));
+        if (el2)
+          el2.textContent = (getLang() === 'en' ? dateFmtEn : dateFmtZh).format(
+            new Date(simTimeToDateMs(simTime))
+          );
       }
 
       // F29 — alignment detector (~2 Hz)
@@ -1998,12 +2088,19 @@ export default function SolarSystemScene() {
         // live activity line under the switch (direct DOM write, no re-render)
         const status = meteorStatusRef.current;
         if (status) {
+          const en = getLang() === 'en';
           status.textContent =
             intensity > 0.5
-              ? '☄ 极大期 · 地球正穿越哈雷彗星轨道'
+              ? en
+                ? "☄ Peak activity · Earth is crossing Halley's orbit"
+                : '☄ 极大期 · 地球正穿越哈雷彗星轨道'
               : intensity > 0.12
-                ? '活动增强 · 接近哈雷轨道节点'
-                : '零星背景流星 · 等待地球抵达节点';
+                ? en
+                  ? "Increased activity · nearing Halley's orbital node"
+                  : '活动增强 · 接近哈雷轨道节点'
+                : en
+                  ? 'Sporadic meteors · waiting for Earth to reach the node'
+                  : '零星背景流星 · 等待地球抵达节点';
         }
       }
 
@@ -2148,6 +2245,25 @@ export default function SolarSystemScene() {
     };
   }, []);
 
+  /* i18n — redraw the constellation name sprites when the language changes
+     (canvas textures are baked once, so they must be rebuilt on switch) */
+  useEffect(() => {
+    const redrawSprites = () => {
+      const vis = constellationVisRef.current;
+      for (let i = 0; i < vis.length; i++) {
+        const spec = CONSTELLATIONS[i];
+        if (!spec) continue;
+        const mat = vis[i].nameMat;
+        const old = mat.map;
+        mat.map = createConstellationLabelTexture(getLang() === 'en' ? spec.nameEn : spec.name);
+        mat.needsUpdate = true;
+        old?.dispose();
+      }
+    };
+    const unsub = subscribeLang(redrawSprites);
+    return unsub;
+  }, []);
+
   /* ---------- F26 — calendar jump actions ---------- */
 
   const jumpToDateMs = (ms: number) => {
@@ -2214,7 +2330,7 @@ export default function SolarSystemScene() {
   };
 
   const speedButtons: { v: Speed; label: string; icon: typeof Play }[] = [
-    { v: 0, label: '暂停', icon: Pause },
+    { v: 0, label: L('暂停', 'Pause'), icon: Pause },
     { v: 1, label: '1×', icon: Play },
     { v: 10, label: '10×', icon: FastForward },
   ];
@@ -2251,17 +2367,17 @@ export default function SolarSystemScene() {
             className="pointer-events-auto absolute left-0 top-0 flex items-center gap-1.5 rounded-full border border-white/10 bg-black/45 px-2 py-0.5 shadow-md shadow-black/40 backdrop-blur-md transition-colors duration-200 hover:border-amber-200/40 hover:bg-black/75 [@media(pointer:coarse)]:px-2.5 [@media(pointer:coarse)]:py-1.5"
           >
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: b.accent }} aria-hidden />
-            <span className="text-[10px] font-medium tracking-[0.14em] text-zinc-200">{b.name}</span>
+            <span className="text-[10px] font-medium tracking-[0.14em] text-zinc-200">{L(b.name, b.nameEn)}</span>
           </button>
         ))}
       </div>
 
       {/* ---------------- bottom-left control panel ---------------- */}
-      <div className="universe-scroll absolute bottom-[calc(5rem+var(--ui-safe-bottom))] left-4 z-30 max-h-[calc(100dvh-140px)] w-60 overflow-y-auto rounded-2xl border border-white/10 bg-black/45 p-4 shadow-xl shadow-black/40 backdrop-blur-xl portrait:left-3 portrait:max-h-[calc(100dvh-200px)]">
+      <div className="universe-scroll uni-anim-slide-left absolute bottom-[calc(5rem+var(--ui-safe-bottom))] left-4 z-30 max-h-[calc(100dvh-140px)] w-60 overflow-y-auto rounded-2xl border border-white/10 bg-black/45 p-4 shadow-xl shadow-black/40 backdrop-blur-xl portrait:left-3 portrait:max-h-[calc(100dvh-200px)]">
         {/* F26 — simulated calendar / ephemeris */}
         <div className="mb-4 border-b border-white/5 pb-3">
           <div className="mb-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.18em] text-zinc-500">
-            <CalendarDays className="h-3 w-3" aria-hidden /> 模拟日期
+            <CalendarDays className="h-3 w-3" aria-hidden /> {L('模拟日期', 'Simulation date')}
           </div>
           <div
             ref={dateTextRef}
@@ -2270,7 +2386,10 @@ export default function SolarSystemScene() {
             —
           </div>
           <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">
-            行星按 J2000 轨道要素（椭圆 · 升交点）推算 · 彗星为观赏压缩周期
+            {L(
+              '行星按 J2000 轨道要素（椭圆 · 升交点）推算 · 彗星为观赏压缩周期',
+              'Planets computed from J2000 orbital elements (ellipse · ascending node) · comet period compressed for viewing'
+            )}
           </p>
           <div className="mt-2 flex gap-1.5">
             <input
@@ -2279,7 +2398,7 @@ export default function SolarSystemScene() {
               min="1900-01-01"
               max="2100-12-31"
               onChange={(e) => setDateInput(e.target.value)}
-              aria-label="选择目标日期"
+              aria-label={L('选择目标日期', 'Pick target date')}
               className="min-h-[30px] min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-2 text-[11px] text-zinc-200 outline-none transition-colors focus:border-amber-200/40 [color-scheme:dark]"
             />
             <button
@@ -2287,7 +2406,7 @@ export default function SolarSystemScene() {
               onClick={handleJumpDate}
               className="flex min-h-[30px] items-center rounded-lg border border-amber-200/25 bg-amber-200/10 px-2.5 text-[11px] font-semibold text-amber-200 transition-colors hover:bg-amber-200/20 [@media(pointer:coarse)]:min-h-[36px]"
             >
-              跳转
+              {L('跳转', 'Jump')}
             </button>
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -2296,23 +2415,26 @@ export default function SolarSystemScene() {
               onClick={handleGoToday}
               className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-amber-200/40 hover:text-amber-200 [@media(pointer:coarse)]:py-1"
             >
-              回到今天
+              {L('回到今天', 'Today')}
             </button>
             <button
               type="button"
               onClick={handleGoOrionidPeak}
-              title="跳到地球穿越哈雷碎片流的日子（猎户座流星雨极大）"
+              title={L(
+                '跳到地球穿越哈雷碎片流的日子（猎户座流星雨极大）',
+                "Jump to the day Earth crosses Halley's debris stream (Orionid peak)"
+              )}
               className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-amber-200/40 hover:text-amber-200 [@media(pointer:coarse)]:py-1"
             >
-              <Zap className="h-2.5 w-2.5 text-amber-300/80" aria-hidden /> 流星雨极大
+              <Zap className="h-2.5 w-2.5 text-amber-300/80" aria-hidden /> {L('流星雨极大', 'Meteor peak')}
             </button>
             <button
               type="button"
               onClick={handleGoHalleyPerihelion}
-              title="跳到哈雷彗星下一次通过近日点"
+              title={L('跳到哈雷彗星下一次通过近日点', "Jump to Halley's next perihelion passage")}
               className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-sky-300/40 hover:text-sky-200 [@media(pointer:coarse)]:py-1"
             >
-              <OrbitIcon className="h-2.5 w-2.5 text-sky-300/80" aria-hidden /> 哈雷近日点
+              <OrbitIcon className="h-2.5 w-2.5 text-sky-300/80" aria-hidden /> {L('哈雷近日点', 'Halley perihelion')}
             </button>
             {/* F29 — one-tap time travel to recorded sky events */}
             {SKY_EVENTS.map((ev) => (
@@ -2320,10 +2442,10 @@ export default function SolarSystemScene() {
                 key={ev.date}
                 type="button"
                 onClick={() => handleSkyEvent(ev.date)}
-                title={ev.desc}
+                title={L(ev.desc, ev.descEn)}
                 className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-amber-200/40 hover:text-amber-200 [@media(pointer:coarse)]:py-1"
               >
-                <History className="h-2.5 w-2.5 text-amber-300/60" aria-hidden /> {ev.label}
+                <History className="h-2.5 w-2.5 text-amber-300/60" aria-hidden /> {L(ev.label, ev.labelEn)}
               </button>
             ))}
           </div>
@@ -2333,7 +2455,7 @@ export default function SolarSystemScene() {
             style={{ opacity: 0 }}
             className="mt-2 rounded-md border border-amber-200/25 bg-gradient-to-r from-amber-200/[0.12] to-transparent px-2 py-1 text-[10px] font-medium leading-snug tracking-wide text-amber-200 shadow-[0_0_12px_rgba(252,211,77,0.12)] transition-opacity duration-700"
           >
-            ✦ 连珠检测中…
+            {L('✦ 连珠检测中…', '✦ Detecting alignment…')}
           </p>
           {/* F36 — live lock: keep the scene pinned to the real clock */}
           <div className="mt-2.5 flex items-center justify-between gap-2">
@@ -2342,7 +2464,7 @@ export default function SolarSystemScene() {
                 className={cn('h-3.5 w-3.5 transition-colors', liveLock ? 'text-emerald-300' : 'text-zinc-500')}
                 aria-hidden
               />
-              实时锁定
+              {L('实时锁定', 'Real-time sync')}
             </div>
             <Switch
               checked={liveLock}
@@ -2350,7 +2472,7 @@ export default function SolarSystemScene() {
                 setLiveLock(v);
                 playEventSound('click');
               }}
-              aria-label="实时锁定到现实时间"
+              aria-label={L('实时锁定到现实时间', 'Lock to real time')}
             />
           </div>
           <p
@@ -2361,15 +2483,17 @@ export default function SolarSystemScene() {
             )}
           >
             <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]" aria-hidden />
-            与现实时间同步 · 1 秒 = 1 秒
+            {L('与现实时间同步 · 1 秒 = 1 秒', 'Synced with real time · 1 s = 1 s')}
           </p>
         </div>
         <div className="mb-1 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.18em] text-zinc-500">
-            <RotateCw className="h-3 w-3" aria-hidden /> 时间流速
+            <RotateCw className="h-3 w-3" aria-hidden /> {L('时间流速', 'Time speed')}
           </div>
           {liveLock && (
-            <span className="text-[9px] font-medium tracking-wider text-emerald-300/80">实时锁定中</span>
+            <span className="text-[9px] font-medium tracking-wider text-emerald-300/80">
+              {L('实时锁定中', 'Real-time locked')}
+            </span>
           )}
         </div>
         <div
@@ -2378,7 +2502,11 @@ export default function SolarSystemScene() {
             liveLock && 'pointer-events-none opacity-40'
           )}
           aria-disabled={liveLock}
-          title={liveLock ? '实时锁定中——关闭「实时锁定」后可调整时间流速' : undefined}
+          title={
+            liveLock
+              ? L('实时锁定中——关闭「实时锁定」后可调整时间流速', 'Real-time locked — turn off "Real-time sync" to change the time speed')
+              : undefined
+          }
         >
           {speedButtons.map((b) => {
             const Icon = b.icon;
@@ -2407,19 +2535,19 @@ export default function SolarSystemScene() {
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
-            <OrbitIcon className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> 轨道线
+            <OrbitIcon className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> {L('轨道线', 'Orbit lines')}
           </div>
-          <Switch checked={showOrbits} onCheckedChange={setShowOrbits} aria-label="显示轨道线" />
+          <Switch checked={showOrbits} onCheckedChange={setShowOrbits} aria-label={L('显示轨道线', 'Show orbit lines')} />
         </div>
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
-            <Tag className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> 行星标签
+            <Tag className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> {L('行星标签', 'Planet labels')}
           </div>
-          <Switch checked={showLabels} onCheckedChange={setShowLabels} aria-label="显示行星标签" />
+          <Switch checked={showLabels} onCheckedChange={setShowLabels} aria-label={L('显示行星标签', 'Show planet labels')} />
         </div>
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
-            <Star className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> 星座连线
+            <Star className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> {L('星座连线', 'Constellation lines')}
           </div>
           <Switch
             checked={showConstellations}
@@ -2427,13 +2555,13 @@ export default function SolarSystemScene() {
               setShowConstellations(checked);
               if (!checked) setSelCon(null);
             }}
-            aria-label="显示星座连线"
+            aria-label={L('显示星座连线', 'Show constellation lines')}
           />
         </div>
         {/* F25 — constellation quick-locate chips */}
         <div className="mt-2">
           <div className="mb-1.5 flex items-center gap-1.5 text-[10px] tracking-[0.16em] text-zinc-500">
-            <Telescope className="h-3 w-3" aria-hidden /> 星座定位
+            <Telescope className="h-3 w-3" aria-hidden /> {L('星座定位', 'Constellations')}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {CONSTELLATIONS.map((c, i) => (
@@ -2441,8 +2569,8 @@ export default function SolarSystemScene() {
                 key={c.en}
                 type="button"
                 onClick={() => flyToConstellation(i)}
-                title={`飞向${c.name}并打开档案`}
-                aria-label={`定位到${c.name}`}
+                title={lang === 'en' ? `Fly to ${c.nameEn} and open its card` : `飞向${c.name}并打开档案`}
+                aria-label={lang === 'en' ? `Locate ${c.nameEn}` : `定位到${c.name}`}
                 className={cn(
                   'flex items-center gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] text-zinc-300 transition-all duration-200',
                   'hover:scale-105 hover:border-white/25 hover:bg-black/60 hover:text-white [@media(pointer:coarse)]:py-1',
@@ -2454,23 +2582,23 @@ export default function SolarSystemScene() {
                   style={{ backgroundColor: CON_CHIP_COLORS[i % CON_CHIP_COLORS.length] }}
                   aria-hidden
                 />
-                {c.name}
+                {L(c.name, c.nameEn)}
               </button>
             ))}
           </div>
         </div>
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
-            <Spline className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> 轨迹尾迹
+            <Spline className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> {L('轨迹尾迹', 'Orbit trails')}
           </div>
-          <Switch checked={showTrails} onCheckedChange={setShowTrails} aria-label="显示轨迹尾迹" />
+          <Switch checked={showTrails} onCheckedChange={setShowTrails} aria-label={L('显示轨迹尾迹', 'Show orbit trails')} />
         </div>
         {/* F22 — Orionid meteor shower */}
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-medium text-zinc-300">
-            <Sparkles className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> 流星雨
+            <Sparkles className="h-3.5 w-3.5 text-zinc-500" aria-hidden /> {L('流星雨', 'Meteor shower')}
           </div>
-          <Switch checked={showMeteors} onCheckedChange={setShowMeteors} aria-label="显示猎户座流星雨" />
+          <Switch checked={showMeteors} onCheckedChange={setShowMeteors} aria-label={L('显示猎户座流星雨', 'Show Orionid meteor shower')} />
         </div>
         <p
           ref={meteorStatusRef}
@@ -2480,7 +2608,7 @@ export default function SolarSystemScene() {
             !showMeteors && 'opacity-0'
           )}
         >
-          零星背景流星 · 等待地球抵达节点
+          {L('零星背景流星 · 等待地球抵达节点', 'Sporadic meteors · waiting for Earth to reach the node')}
         </p>
       </div>
 
@@ -2488,11 +2616,17 @@ export default function SolarSystemScene() {
       <div className="pointer-events-none absolute bottom-[calc(1rem+var(--ui-safe-bottom))] left-1/2 z-30 hidden -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-1.5 text-[11px] tracking-wide text-zinc-400 backdrop-blur-xl portrait:flex portrait:bottom-[calc(3.75rem+var(--ui-safe-bottom))] portrait:w-max portrait:max-w-[94vw] portrait:flex-col portrait:items-center portrait:gap-1 portrait:rounded-2xl portrait:px-3.5 portrait:py-2 portrait:text-center sm:flex">
         <span className="flex items-center gap-2 [@media(pointer:coarse)]:hidden">
           <MousePointerClick className="h-3.5 w-3.5 shrink-0 text-amber-200/70" aria-hidden />
-          拖拽旋转视角 · 滚轮缩放 · 点击行星/彗星镜头飞近跟随 · 点击星座查看档案
+          {L(
+            '拖拽旋转视角 · 滚轮缩放 · 点击行星/彗星镜头飞近跟随 · 点击星座查看档案',
+            'Drag to orbit · scroll to zoom · click a planet/comet to fly close and follow · click a constellation to open its card'
+          )}
         </span>
         <span className="hidden items-center gap-1.5 [@media(pointer:coarse)]:flex">
           <MousePointerClick className="h-3.5 w-3.5 shrink-0 text-amber-200/70" aria-hidden />
-          单指拖拽旋转 · 双指缩放 · 点行星镜头跟随 · 点星看星座档案
+          {L(
+            '单指拖拽旋转 · 双指缩放 · 点行星镜头跟随 · 点星看星座档案',
+            'One-finger drag to orbit · pinch to zoom · tap a planet to follow it · tap a star to open the constellation card'
+          )}
         </span>
       </div>
 
@@ -2500,7 +2634,7 @@ export default function SolarSystemScene() {
       <aside
         aria-hidden={!selected}
         className={cn(
-          'absolute right-4 top-24 z-40 w-[320px] max-w-[86vw] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-500 ease-out portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto portrait:max-w-none',
+          'uni-anim-slide-right absolute right-4 top-24 z-40 w-[320px] max-w-[86vw] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-500 ease-out portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto portrait:max-w-none',
           selected ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[120%] opacity-0'
         )}
       >
@@ -2516,24 +2650,24 @@ export default function SolarSystemScene() {
                       style={{ backgroundColor: selected.accent, boxShadow: `0 0 10px ${selected.accent}` }}
                       aria-hidden
                     />
-                    <h2 className="text-xl font-bold tracking-wide text-zinc-50">{selected.name}</h2>
+                    <h2 className="text-xl font-bold tracking-wide text-zinc-50">{L(selected.name, selected.nameEn)}</h2>
                     <span className="text-xs font-medium tracking-[0.18em] text-zinc-500">{selected.en.toUpperCase()}</span>
                   </div>
                   <span className="mt-2 inline-block rounded-full border border-amber-200/25 bg-amber-200/10 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.2em] text-amber-200/90">
-                    {selected.kind}
+                    {L(selected.kind, selected.kindEn)}
                   </span>
                   <span className="mt-1.5 ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-emerald-200/90">
                     <span className="relative flex h-1.5 w-1.5" aria-hidden>
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60" />
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-300" />
                     </span>
-                    镜头跟随中
+                    {L('镜头跟随中', 'Camera following')}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelected(null)}
-                  aria-label="关闭资料卡"
+                  aria-label={L('关闭资料卡', 'Close info card')}
                   className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
                 >
                   <X className="h-4 w-4" aria-hidden />
@@ -2541,29 +2675,37 @@ export default function SolarSystemScene() {
               </div>
 
               <p className="mt-4 border-l-2 border-amber-200/30 pl-3 text-[13px] leading-relaxed text-zinc-300">
-                {selected.intro}
+                {L(selected.intro, selected.introEn)}
               </p>
 
-              <dl className="mt-4 grid grid-cols-2 gap-2">
+              <dl className="uni-anim-stagger mt-4 grid grid-cols-2 gap-2">
                 {[
-                  { icon: Ruler, label: '直径', value: `${selected.diameterKm.toLocaleString('zh-CN')} km`, span: false },
-                  { icon: Globe, label: '距太阳', value: selected.id === 'halley' ? '0.59 ~ 35.1 AU' : selected.au > 0 ? `${selected.au} AU` : '—', span: false },
-                  { icon: Thermometer, label: '表面温度', value: selected.tempC, span: false },
-                  { icon: Weight, label: '表面重力', value: selected.gravity, span: false },
-                  { icon: Gauge, label: '轨道速度', value: selected.orbitSpeed, span: false },
+                  { icon: Ruler, label: L('直径', 'Diameter'), value: `${selected.diameterKm.toLocaleString(lang === 'en' ? 'en-US' : 'zh-CN')} km`, span: false },
+                  {
+                    icon: Globe,
+                    label: L('距太阳', 'Distance from Sun'),
+                    value: selected.id === 'halley' ? '0.59 ~ 35.1 AU' : selected.au > 0 ? `${selected.au} AU` : '—',
+                    span: false,
+                  },
+                  { icon: Thermometer, label: L('表面温度', 'Surface temp'), value: L(selected.tempC, selected.tempCEn), span: false },
+                  { icon: Weight, label: L('表面重力', 'Surface gravity'), value: L(selected.gravity, selected.gravityEn), span: false },
+                  { icon: Gauge, label: L('轨道速度', 'Orbital velocity'), value: L(selected.orbitSpeed, selected.orbitSpeedEn), span: false },
                   {
                     icon: MoonIcon,
-                    label: selected.id === 'sun' ? '行星' : '已知卫星',
-                    value: selected.id === 'sun' ? '8 颗' : `${selected.moons} 颗`,
+                    label: selected.id === 'sun' ? L('行星', 'Planets') : L('已知卫星', 'Known moons'),
+                    value:
+                      selected.id === 'sun'
+                        ? lang === 'en' ? '8 planets' : '8 颗'
+                        : lang === 'en' ? `${selected.moons} moons` : `${selected.moons} 颗`,
                     span: false,
                   },
                   {
                     icon: OrbitIcon,
-                    label: selected.id === 'sun' ? '银河系公转' : '公转周期',
-                    value: selected.orbitPeriod,
+                    label: selected.id === 'sun' ? L('银河系公转', 'Galactic orbit') : L('公转周期', 'Orbital period'),
+                    value: L(selected.orbitPeriod, selected.orbitPeriodEn),
                     span: true,
                   },
-                  { icon: RotateCw, label: '自转周期', value: selected.rotationPeriod, span: true },
+                  { icon: RotateCw, label: L('自转周期', 'Rotation period'), value: L(selected.rotationPeriod, selected.rotationPeriodEn), span: true },
                 ].map((row) => (
                   <div
                     key={row.label}
@@ -2583,7 +2725,9 @@ export default function SolarSystemScene() {
                 ))}
               </dl>
 
-              <p className="mt-4 text-right text-[10px] tracking-wider text-zinc-600">数据来源 · NASA 行星档案</p>
+              <p className="mt-4 text-right text-[10px] tracking-wider text-zinc-600">
+                {L('数据来源 · NASA 行星档案', 'Data source · NASA Planetary Fact Sheet')}
+              </p>
             </div>
           </>
         )}
@@ -2593,7 +2737,7 @@ export default function SolarSystemScene() {
       <aside
         aria-hidden={selCon === null}
         className={cn(
-          'absolute right-4 top-24 z-40 w-[320px] max-w-[86vw] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-500 ease-out portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto portrait:max-w-none',
+          'uni-anim-slide-right absolute right-4 top-24 z-40 w-[320px] max-w-[86vw] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-500 ease-out portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto portrait:max-w-none',
           selCon !== null ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[120%] opacity-0'
         )}
       >
@@ -2607,17 +2751,17 @@ export default function SolarSystemScene() {
                   <div>
                     <div className="flex items-center gap-2.5">
                       <Star className="h-4 w-4 text-sky-200" aria-hidden />
-                      <h2 className="text-xl font-bold tracking-wide text-zinc-50">{con.name}</h2>
+                      <h2 className="text-xl font-bold tracking-wide text-zinc-50">{L(con.name, con.nameEn)}</h2>
                       <span className="text-xs font-medium tracking-[0.18em] text-zinc-500">{con.en}</span>
                     </div>
                     <span className="mt-2 inline-block rounded-full border border-sky-200/25 bg-sky-200/10 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.2em] text-sky-200/90">
-                      {con.kind}
+                      {L(con.kind, con.kindEn)}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => setSelCon(null)}
-                    aria-label="关闭星座档案卡"
+                    aria-label={L('关闭星座档案卡', 'Close constellation card')}
                     className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
                   >
                     <X className="h-4 w-4" aria-hidden />
@@ -2625,18 +2769,18 @@ export default function SolarSystemScene() {
                 </div>
 
                 <p className="mt-4 border-l-2 border-sky-200/30 pl-3 text-[13px] leading-relaxed text-zinc-300">
-                  {con.story}
+                  {L(con.story, con.storyEn)}
                 </p>
 
                 {/* F19 — mini star chart */}
                 <ConstellationChart con={con} />
 
-                <dl className="mt-4 grid grid-cols-2 gap-2">
+                <dl className="uni-anim-stagger mt-4 grid grid-cols-2 gap-2">
                   {[
-                    { icon: Star, label: '最亮星', value: con.brightest, span: false },
-                    { icon: Gauge, label: '视星等', value: con.magnitude, span: false },
-                    { icon: Ruler, label: '距离', value: con.distance, span: false },
-                    { icon: CalendarDays, label: '最佳观测', value: con.bestSeason, span: true },
+                    { icon: Star, label: L('最亮星', 'Brightest star'), value: L(con.brightest, con.brightestEn), span: false },
+                    { icon: Gauge, label: L('视星等', 'Apparent magnitude'), value: con.magnitude, span: false },
+                    { icon: Ruler, label: L('距离', 'Distance'), value: L(con.distance, con.distanceEn), span: false },
+                    { icon: CalendarDays, label: L('最佳观测', 'Best viewing'), value: L(con.bestSeason, con.bestSeasonEn), span: true },
                   ].map((row) => (
                     <div
                       key={row.label}
@@ -2656,7 +2800,9 @@ export default function SolarSystemScene() {
                   ))}
                 </dl>
 
-                <p className="mt-4 text-right text-[10px] tracking-wider text-zinc-600">星表坐标 · J2000.0 历元</p>
+                <p className="mt-4 text-right text-[10px] tracking-wider text-zinc-600">
+                  {L('星表坐标 · J2000.0 历元', 'Catalog coordinates · Epoch J2000.0')}
+                </p>
               </div>
             </>
           );

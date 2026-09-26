@@ -2,17 +2,45 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Orbit, Sparkles, CircleDot, Rocket, Loader2, Camera, Check, Gauge, Volume2, VolumeX, Bell, BellOff, SlidersHorizontal } from 'lucide-react';
+import {
+  Orbit,
+  Sparkles,
+  CircleDot,
+  Rocket,
+  Loader2,
+  Camera,
+  Check,
+  Gauge,
+  Volume2,
+  VolumeX,
+  Bell,
+  BellOff,
+  SlidersHorizontal,
+  Settings,
+  Languages,
+  Keyboard,
+  X,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
 import { takeScreenshot, downloadDataUrl } from '@/components/universe/capture';
 import { ambient, playEventSound } from '@/components/universe/soundscape';
 import {
   cycleQuality,
-  getQualityLabel,
+  getQualityLevel,
   getRenderScale,
   onAutoQualityChange,
+  type QualityLevel,
 } from '@/components/universe/quality';
+import {
+  L,
+  useLang,
+  subscribeLang,
+  getLang,
+  getLangMode,
+  setLangMode,
+  type LangMode,
+} from '@/components/universe/i18n';
 
 type SceneId = 'solar' | 'galaxy' | 'blackhole';
 
@@ -41,17 +69,23 @@ const loadVolume = (key: string): number => {
   }
 };
 
-const SCENE_TABS: { id: SceneId; label: string; sub: string; icon: typeof Orbit }[] = [
-  { id: 'solar', label: '太阳系', sub: 'SOLAR SYSTEM', icon: Orbit },
-  { id: 'galaxy', label: '银河系', sub: 'MILKY WAY', icon: Sparkles },
-  { id: 'blackhole', label: '黑洞', sub: 'BLACK HOLE', icon: CircleDot },
+const SCENE_TABS: { id: SceneId; label: string; en: string; sub: string; icon: typeof Orbit }[] = [
+  { id: 'solar', label: '太阳系', en: 'Solar System', sub: 'SOLAR SYSTEM', icon: Orbit },
+  { id: 'galaxy', label: '银河系', en: 'Milky Way', sub: 'MILKY WAY', icon: Sparkles },
+  { id: 'blackhole', label: '黑洞', en: 'Black Hole', sub: 'BLACK HOLE', icon: CircleDot },
 ];
 
+/** Bilingual quality labels — quality.ts keeps Chinese-only labels, the UI translates. */
+const QUALITY_ZH = ['流畅', '均衡', '高清'] as const;
+const QUALITY_EN = ['Smooth', 'Balanced', 'HD'] as const;
+const QUALITY_SCALE_PERCENT = [50, 75, 100] as const;
+
 function SceneLoading() {
+  useLang(); // subscribe so the loading text follows language switches
   return (
     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#020208]">
       <Loader2 className="h-8 w-8 animate-spin text-amber-300/80" aria-hidden />
-      <p className="text-sm tracking-[0.3em] text-zinc-400">正在初始化场景 …</p>
+      <p className="text-sm tracking-[0.3em] text-zinc-400">{L('正在初始化场景 …', 'Initializing scene …')}</p>
     </div>
   );
 }
@@ -70,17 +104,22 @@ const BlackHoleScene = dynamic(() => import('@/components/universe/BlackHoleScen
 });
 
 export default function UniverseBrowser() {
+  useLang(); // re-render on language change so every L() below re-evaluates
   const [active, setActive] = useState<SceneId>('solar');
   const [shotFlash, setShotFlash] = useState(false);
-  const [qualityLabel, setQualityLabel] = useState('高清');
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>(getQualityLevel);
   const [renderScale, setRenderScale] = useState(100);
-  const [autoToast, setAutoToast] = useState<string | null>(null);
+  const [autoToastLevel, setAutoToastLevel] = useState<QualityLevel | null>(null);
   const [soundOn, setSoundOn] = useState(false);
   const [sfxOn, setSfxOn] = useState<boolean>(loadSfxPreference); // F37
   const [ambientVol, setAmbientVol] = useState<number>(() => loadVolume(AMBIENT_VOL_LS_KEY)); // F39
   const [sfxVol, setSfxVol] = useState<number>(() => loadVolume(SFX_VOL_LS_KEY)); // F39
   const [audioPanelOpen, setAudioPanelOpen] = useState(false); // F39 — volume popover
   const [showRenderInfo, setShowRenderInfo] = useState(false); // F24 — tap support for touch devices
+  const [settingsOpen, setSettingsOpen] = useState(false); // settings dialog
+  const [langMode, setLangModeState] = useState<LangMode>(() =>
+    typeof window === 'undefined' ? 'auto' : getLangMode()
+  );
   const flashTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -92,16 +131,23 @@ export default function UniverseBrowser() {
     []
   );
 
+  /* keep <html lang> in sync with the effective language */
+  useEffect(() => {
+    const sync = () => {
+      document.documentElement.lang = getLang() === 'en' ? 'en' : 'zh-CN';
+    };
+    sync();
+    return subscribeLang(sync);
+  }, []);
+
   /* F11 — toast when the FPS governor auto-drops quality */
   useEffect(() => {
     return onAutoQualityChange((level) => {
-      const labels = ['流畅', '均衡', '高清'];
-      const scales = [50, 75, 100];
-      setQualityLabel(labels[level]);
-      setRenderScale(scales[level]);
-      setAutoToast(`帧率偏低，已自动切换至「${labels[level]}」画质`);
+      setQualityLevel(level);
+      setRenderScale(QUALITY_SCALE_PERCENT[level]);
+      setAutoToastLevel(level);
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
-      toastTimer.current = window.setTimeout(() => setAutoToast(null), 5000);
+      toastTimer.current = window.setTimeout(() => setAutoToastLevel(null), 5000);
     });
   }, []);
 
@@ -183,7 +229,17 @@ export default function UniverseBrowser() {
     [active]
   );
 
-  /* F40 — keyboard shortcuts: 1/2/3 scenes · M master mute · Space solar pause.
+  /* settings dialog open/close (both play the shared UI click) */
+  const openSettings = useCallback(() => {
+    setSettingsOpen(true);
+    playEventSound('click');
+  }, []);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    playEventSound('click');
+  }, []);
+
+  /* F40 — keyboard shortcuts: 1/2/3 scenes · M master mute · Space solar pause · , settings.
      Ignored while typing in inputs or when a button/switch has focus. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -201,14 +257,28 @@ export default function UniverseBrowser() {
       else if (k === '2') switchTo('galaxy');
       else if (k === '3') switchTo('blackhole');
       else if (k === 'm') handleSoundToggle();
+      else if (k === ',') openSettings();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [switchTo, handleSoundToggle]);
+  }, [switchTo, handleSoundToggle, openSettings]);
+
+  /* settings dialog: Esc closes (capture phase — works even when a control inside has focus) */
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeSettings();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [settingsOpen, closeSettings]);
 
   const handleQualityCycle = useCallback(() => {
-    cycleQuality();
-    setQualityLabel(getQualityLabel());
+    const level = cycleQuality();
+    setQualityLevel(level);
     setRenderScale(Math.round(getRenderScale() * 100));
     playEventSound('click');
   }, []);
@@ -225,13 +295,38 @@ export default function UniverseBrowser() {
     flashTimer.current = window.setTimeout(() => setShotFlash(false), 1600);
   }, [active]);
 
+  /* language chips — setLangMode fires listeners; the local state guarantees a
+     re-render even when the effective language (and thus useLang) is unchanged */
+  const handleLangModeChange = useCallback((mode: LangMode) => {
+    setLangMode(mode);
+    setLangModeState(mode);
+    playEventSound('click');
+  }, []);
+
+  const qualityLabel = L(QUALITY_ZH[qualityLevel], QUALITY_EN[qualityLevel]);
+
+  const langOptions: { mode: LangMode; label: string }[] = [
+    { mode: 'auto', label: L('跟随设备', 'Follow device') },
+    { mode: 'zh', label: '中文' },
+    { mode: 'en', label: 'English' },
+  ];
+  const shortcuts: { keys: string; desc: string }[] = [
+    { keys: '1 / 2 / 3', desc: L('切换场景', 'Switch scenes') },
+    { keys: 'M', desc: L('静音', 'Mute') },
+    { keys: 'Space', desc: L('暂停太阳系', 'Pause the solar system') },
+    { keys: ',', desc: L('打开设置', 'Open settings') },
+  ];
+
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-[#020208] text-zinc-100 select-none">
       {/* ---------------- 3D scene layer ---------------- */}
-      <main className="absolute inset-0" aria-label="3D 宇宙场景">
-        {active === 'solar' && <SolarSystemScene />}
-        {active === 'galaxy' && <GalaxyScene />}
-        {active === 'blackhole' && <BlackHoleScene />}
+      <main className="absolute inset-0" aria-label={L('3D 宇宙场景', '3D universe scene')}>
+        {/* key remounts the wrapper on scene switch → the fade plays exactly once per switch */}
+        <div key={active} className="uni-anim-fade-in absolute inset-0">
+          {active === 'solar' && <SolarSystemScene />}
+          {active === 'galaxy' && <GalaxyScene />}
+          {active === 'blackhole' && <BlackHoleScene />}
+        </div>
       </main>
 
       {/* ---------------- top glass header ----------------
@@ -240,7 +335,7 @@ export default function UniverseBrowser() {
              row 2 = scene tabs stretched full-width (order-3)
            landscape keeps the original single-row justify-between. */}
       <header
-        className="pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between gap-3 bg-gradient-to-b from-black/70 via-black/25 to-transparent px-4 pb-8 pt-[max(0.75rem,var(--ui-safe-top))] sm:px-6 portrait:flex-wrap portrait:gap-y-2"
+        className="uni-anim-fade-in pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between gap-3 bg-gradient-to-b from-black/70 via-black/25 to-transparent px-4 pb-8 pt-[max(0.75rem,var(--ui-safe-top))] sm:px-6 portrait:flex-wrap portrait:gap-y-2"
       >
         {/* brand */}
         <div className="pointer-events-auto flex items-center gap-3 portrait:order-1 portrait:gap-2">
@@ -248,14 +343,14 @@ export default function UniverseBrowser() {
             <Rocket className="h-4.5 w-4.5 text-amber-300 portrait:h-4 portrait:w-4" aria-hidden />
           </div>
           <div className="leading-tight">
-            <h1 className="whitespace-nowrap text-[15px] font-semibold tracking-[0.22em] text-zinc-50 portrait:text-[13px] portrait:tracking-[0.16em]">宇宙浏览器</h1>
+            <h1 className="whitespace-nowrap text-[15px] font-semibold tracking-[0.22em] text-zinc-50 portrait:text-[13px] portrait:tracking-[0.16em]">{L('宇宙浏览器', 'Universe Browser')}</h1>
             <p className="whitespace-nowrap text-[10px] font-medium tracking-[0.34em] text-amber-200/60 portrait:hidden">UNIVERSE EXPLORER</p>
           </div>
         </div>
 
         {/* tabs */}
         <nav
-          aria-label="场景切换"
+          aria-label={L('场景切换', 'Scene switcher')}
           className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-white/10 bg-black/45 p-1.5 shadow-lg shadow-black/40 backdrop-blur-xl portrait:order-3 portrait:w-full portrait:justify-center"
         >
           {SCENE_TABS.map((tab) => {
@@ -275,7 +370,7 @@ export default function UniverseBrowser() {
                 )}
               >
                 <Icon className={cn('h-4 w-4 transition-transform duration-300', isActive && 'scale-110')} aria-hidden />
-                <span>{tab.label}</span>
+                <span>{L(tab.label, tab.en)}</span>
                 <span
                   className={cn(
                     'hidden text-[9px] font-semibold tracking-[0.22em] lg:inline',
@@ -292,14 +387,14 @@ export default function UniverseBrowser() {
           })}
         </nav>
 
-        {/* right cluster: sound + quality + screenshot + badge */}
+        {/* right cluster: sound + quality + screenshot + settings + badge */}
         <div className="pointer-events-auto flex items-center gap-2 portrait:order-2 portrait:gap-1">
           <button
             type="button"
             onClick={handleSoundToggle}
-            aria-label={soundOn ? '关闭全部音效' : '开启音效'}
+            aria-label={soundOn ? L('关闭全部音效', 'Mute all sound') : L('开启音效', 'Enable sound')}
             aria-pressed={soundOn}
-            title="音效总开关（环境音 + UI 音）· 快捷键 M"
+            title={L('音效总开关（环境音 + UI 音）· 快捷键 M', 'Master sound switch (ambient + UI sounds) · shortcut M')}
             className={cn(
               'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
               soundOn
@@ -314,15 +409,15 @@ export default function UniverseBrowser() {
                 soundOn ? 'text-teal-200' : 'text-zinc-400'
               )}
             >
-              音效
+              {L('音效', 'Sound')}
             </span>
           </button>
           <button
             type="button"
             onClick={handleSfxToggle}
-            aria-label={sfxOn ? '关闭 UI 音效' : '开启 UI 音效'}
+            aria-label={sfxOn ? L('关闭 UI 音效', 'Disable UI sounds') : L('开启 UI 音效', 'Enable UI sounds')}
             aria-pressed={sfxOn}
-            title="UI 事件音效（点击/截图反馈音，受总开关控制）"
+            title={L('UI 事件音效（点击/截图反馈音，受总开关控制）', 'UI event sounds (click/screenshot feedback, gated by the master switch)')}
             className={cn(
               'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
               sfxOn && soundOn
@@ -337,7 +432,7 @@ export default function UniverseBrowser() {
                 sfxOn && soundOn ? 'text-teal-200' : 'text-zinc-400'
               )}
             >
-              UI 音
+              {L('UI 音', 'UI')}
             </span>
           </button>
           {/* F39 — volume sliders popover */}
@@ -345,9 +440,9 @@ export default function UniverseBrowser() {
             <button
               type="button"
               onClick={() => setAudioPanelOpen((v) => !v)}
-              aria-label={audioPanelOpen ? '关闭音量设置' : '打开音量设置'}
+              aria-label={audioPanelOpen ? L('关闭音量设置', 'Close volume settings') : L('打开音量设置', 'Open volume settings')}
               aria-expanded={audioPanelOpen}
-              title="音量设置"
+              title={L('音量设置', 'Volume')}
               className={cn(
                 'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
                 audioPanelOpen
@@ -370,10 +465,10 @@ export default function UniverseBrowser() {
             {audioPanelOpen && (
               <div
                 role="dialog"
-                aria-label="音量设置"
-                className="absolute right-0 top-11 z-50 w-[264px] rounded-2xl border border-white/10 bg-black/75 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl"
+                aria-label={L('音量设置', 'Volume')}
+                className="uni-anim-scale-in absolute right-0 top-11 z-50 w-[264px] rounded-2xl border border-white/10 bg-black/75 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl"
               >
-                <p className="text-[10px] font-semibold tracking-[0.26em] text-zinc-500">音量设置</p>
+                <p className="text-[10px] font-semibold tracking-[0.26em] text-zinc-500">{L('音量设置', 'Volume')}</p>
                 <div
                   className={cn(
                     'mt-3 space-y-4 transition-opacity duration-200',
@@ -383,7 +478,7 @@ export default function UniverseBrowser() {
                   <div>
                     <div className="mb-1.5 flex items-center justify-between">
                       <label htmlFor="vol-ambient" className="text-[11px] font-medium tracking-wider text-zinc-300">
-                        环境音音量
+                        {L('环境音音量', 'Ambient volume')}
                       </label>
                       <span className="font-mono text-[11px] tabular-nums text-teal-200/90">{ambientVol}%</span>
                     </div>
@@ -395,13 +490,13 @@ export default function UniverseBrowser() {
                       min={0}
                       max={100}
                       step={1}
-                      aria-label="环境音音量"
+                      aria-label={L('环境音音量', 'Ambient volume')}
                     />
                   </div>
                   <div>
                     <div className="mb-1.5 flex items-center justify-between">
                       <label htmlFor="vol-sfx" className="text-[11px] font-medium tracking-wider text-zinc-300">
-                        UI 音音量
+                        {L('UI 音音量', 'UI sounds volume')}
                       </label>
                       <span className="font-mono text-[11px] tabular-nums text-teal-200/90">{sfxVol}%</span>
                     </div>
@@ -413,14 +508,14 @@ export default function UniverseBrowser() {
                       min={0}
                       max={100}
                       step={1}
-                      aria-label="UI 音音量"
+                      aria-label={L('UI 音音量', 'UI sounds volume')}
                     />
                   </div>
                 </div>
                 <p className="mt-3 border-t border-white/5 pt-2 text-[10px] leading-relaxed text-zinc-500">
                   {!soundOn
-                    ? '总开关已关闭 · 打开「音效」后可调节'
-                    : '「音效」为总开关 · M 键快速静音 · 1/2/3 切场景 · 空格暂停太阳系'}
+                    ? L('总开关已关闭 · 打开「音效」后可调节', 'Master switch is off · enable Sound to adjust')
+                    : L('「音效」为总开关 · M 键快速静音 · 1/2/3 切场景 · 空格暂停太阳系', 'Sound is the master switch · M to mute · 1/2/3 switch scenes · Space pauses the solar system')}
                 </p>
               </div>
             )}
@@ -428,8 +523,8 @@ export default function UniverseBrowser() {
           <button
             type="button"
             onClick={handleQualityCycle}
-            aria-label="切换渲染画质（高清 / 均衡 / 流畅）"
-            title="渲染分辨率：高清 100% · 均衡 75% · 流畅 50%"
+            aria-label={L('切换渲染画质（高清 / 均衡 / 流畅）', 'Cycle render quality (HD / Balanced / Smooth)')}
+            title={L('渲染分辨率：高清 100% · 均衡 75% · 流畅 50%', 'Render scale: HD 100% · Balanced 75% · Smooth 50%')}
             className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 text-zinc-300 backdrop-blur-xl transition-all duration-300 hover:border-violet-300/40 hover:bg-black/60 hover:text-violet-200 portrait:px-2 [@media(pointer:coarse)]:h-11"
           >
             <Gauge className="h-4 w-4" aria-hidden />
@@ -438,8 +533,8 @@ export default function UniverseBrowser() {
           <button
             type="button"
             onClick={handleScreenshot}
-            aria-label="截图当前场景并下载"
-            title="截图当前场景（PNG）"
+            aria-label={L('截图当前场景并下载', 'Screenshot the current scene and download')}
+            title={L('截图当前场景（PNG）', 'Screenshot the current scene (PNG)')}
             className={cn(
               'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
               shotFlash
@@ -454,12 +549,30 @@ export default function UniverseBrowser() {
                 shotFlash ? 'text-emerald-200' : 'text-zinc-400'
               )}
             >
-              {shotFlash ? '截图已保存' : '截图'}
+              {shotFlash ? L('截图已保存', 'Saved') : L('截图', 'Screenshot')}
             </span>
+          </button>
+          {/* settings — opens the centered glass dialog */}
+          <button
+            type="button"
+            onClick={() => (settingsOpen ? closeSettings() : openSettings())}
+            aria-label={settingsOpen ? L('关闭设置', 'Close settings') : L('打开设置', 'Open settings')}
+            aria-expanded={settingsOpen}
+            title={L('设置 · 快捷键 ,', 'Settings · shortcut ,')}
+            className={cn(
+              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
+              settingsOpen
+                ? 'border-teal-300/40 bg-teal-300/15 text-teal-200'
+                : 'border-white/10 bg-black/40 text-zinc-300 hover:border-teal-200/40 hover:bg-black/60 hover:text-teal-200'
+            )}
+          >
+            <Settings className="h-4 w-4" aria-hidden />
           </button>
           <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 backdrop-blur-xl lg:flex">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" aria-hidden />
-            <span className="whitespace-nowrap text-[11px] tracking-wider text-zinc-400">全程序化材质 · Three.js WebGL</span>
+            <span className="whitespace-nowrap text-[11px] tracking-wider text-zinc-400">
+              {L('全程序化材质 · Three.js WebGL', 'Fully procedural materials · Three.js WebGL')}
+            </span>
           </div>
         </div>
       </header>
@@ -468,7 +581,7 @@ export default function UniverseBrowser() {
       <div
         className="group absolute bottom-[calc(1rem+var(--ui-safe-bottom))] left-4 z-40 flex cursor-pointer items-center gap-2.5 rounded-xl border border-white/10 bg-black/50 px-3.5 py-2 shadow-lg shadow-black/50 backdrop-blur-xl"
         role="status"
-        aria-label="帧率显示（点击查看渲染信息）"
+        aria-label={L('帧率显示（点击查看渲染信息）', 'FPS (click for render info)')}
         onClick={() => setShowRenderInfo((v) => !v)}
       >
         <span id="fps-dot" className="h-2 w-2 rounded-full bg-emerald-400" style={{ backgroundColor: '#4ade80' }} aria-hidden />
@@ -478,21 +591,25 @@ export default function UniverseBrowser() {
           </span>
           <span className="text-[10px] tracking-[0.2em] text-zinc-500">FPS</span>
         </div>
-        {/* hover detail: live render-resolution info (F24: also tap-toggleable for touch) */}
-        <div
-          className={cn(
-            'pointer-events-none absolute bottom-[calc(100%+8px)] left-0 w-max origin-bottom-left rounded-lg border border-white/10 bg-black/75 px-3 py-2 shadow-xl shadow-black/60 backdrop-blur-xl transition-all duration-200 group-hover:scale-100 group-hover:opacity-100',
-            showRenderInfo ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-          )}
-        >
-          <p className="text-[10px] font-semibold tracking-[0.22em] text-zinc-500">渲染信息</p>
-          <p className="mt-1 text-[11px] text-zinc-300">
-            画质档位 · <span className="font-semibold text-amber-200">{qualityLabel}</span>
-            <span className="ml-1 text-zinc-500">{renderScale}%</span>
-          </p>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-zinc-500">
-            帧率持续低于 24 时会自动降档
-          </p>
+        {/* hover detail: live render-resolution info (F24: also tap-toggleable for touch).
+            The animated wrapper plays uni-anim-fade-up once on mount; the inner card
+            keeps its own hover/tap scale+opacity transitions. */}
+        <div className="uni-anim-fade-up pointer-events-none absolute bottom-[calc(100%+8px)] left-0">
+          <div
+            className={cn(
+              'w-max origin-bottom-left rounded-lg border border-white/10 bg-black/75 px-3 py-2 shadow-xl shadow-black/60 backdrop-blur-xl transition-all duration-200 group-hover:scale-100 group-hover:opacity-100',
+              showRenderInfo ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
+            )}
+          >
+            <p className="text-[10px] font-semibold tracking-[0.22em] text-zinc-500">{L('渲染信息', 'Render info')}</p>
+            <p className="mt-1 text-[11px] text-zinc-300">
+              {L('画质档位', 'Quality')} · <span className="font-semibold text-amber-200">{qualityLabel}</span>
+              <span className="ml-1 text-zinc-500">{renderScale}%</span>
+            </p>
+            <p className="mt-0.5 text-[10px] leading-relaxed text-zinc-500">
+              {L('帧率持续低于 24 时会自动降档', 'Auto-drops one level when FPS stays below 24')}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -501,12 +618,96 @@ export default function UniverseBrowser() {
         aria-live="polite"
         className={cn(
           'pointer-events-none absolute bottom-[calc(4rem+var(--ui-safe-bottom))] left-1/2 z-50 -translate-x-1/2 rounded-full border border-amber-300/30 bg-black/70 px-4 py-2 text-[12px] font-medium tracking-wide text-amber-100 shadow-xl shadow-black/60 backdrop-blur-xl transition-all duration-300 portrait:w-max portrait:max-w-[92vw] portrait:text-center',
-          autoToast ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
+          autoToastLevel !== null ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
         )}
       >
         <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-300 align-middle shadow-[0_0_8px_rgba(252,211,77,0.9)]" aria-hidden />
-        {autoToast}
+        {autoToastLevel !== null
+          ? L(
+              `帧率偏低，已自动切换至「${QUALITY_ZH[autoToastLevel]}」画质`,
+              `Low frame rate — switched to ${QUALITY_EN[autoToastLevel]} quality`
+            )
+          : null}
       </div>
+
+      {/* ---------------- settings dialog ---------------- */}
+      {settingsOpen && (
+        <div
+          className="uni-anim-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={closeSettings}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={L('设置', 'Settings')}
+            className="uni-anim-scale-in w-full max-w-md rounded-2xl border border-white/10 bg-black/75 p-5 shadow-2xl shadow-black/70 backdrop-blur-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* dialog header */}
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-semibold tracking-[0.22em] text-zinc-50">
+                <Settings className="h-4 w-4 text-amber-300" aria-hidden />
+                {L('设置', 'Settings')}
+              </h2>
+              <button
+                type="button"
+                onClick={closeSettings}
+                aria-label={L('关闭设置', 'Close settings')}
+                className="rounded-lg border border-white/10 bg-black/40 p-1.5 text-zinc-400 transition-colors duration-200 hover:border-white/25 hover:text-zinc-100"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+
+            {/* language */}
+            <section className="mt-5">
+              <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.26em] text-zinc-500">
+                <Languages className="h-3.5 w-3.5" aria-hidden />
+                {L('语言', 'Language')}
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {langOptions.map((opt) => (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    onClick={() => handleLangModeChange(opt.mode)}
+                    aria-pressed={langMode === opt.mode}
+                    className={cn(
+                      'rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-all duration-300',
+                      langMode === opt.mode
+                        ? 'border-amber-300/40 bg-gradient-to-b from-amber-200/20 to-amber-400/10 text-amber-200 shadow-[inset_0_0_0_1px_rgba(252,211,77,0.25),0_0_18px_rgba(251,191,36,0.12)]'
+                        : 'border-white/10 bg-black/40 text-zinc-300 hover:border-amber-200/30 hover:text-amber-100'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* keyboard shortcuts */}
+            <section className="mt-5">
+              <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.26em] text-zinc-500">
+                <Keyboard className="h-3.5 w-3.5" aria-hidden />
+                {L('键盘快捷键', 'Keyboard shortcuts')}
+              </p>
+              <ul className="uni-anim-stagger mt-2.5 space-y-1.5">
+                {shortcuts.map((s) => (
+                  <li
+                    key={s.keys}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-1.5"
+                  >
+                    <kbd className="rounded-md border border-white/10 bg-black/50 px-2 py-0.5 font-mono text-[11px] text-amber-200/90">
+                      {s.keys}
+                    </kbd>
+                    <span className="text-[11px] text-zinc-400">{s.desc}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </div>
+      )}
 
       {/* subtle vignette */}
       <div className="pointer-events-none absolute inset-0 z-30 shadow-[inset_0_0_180px_rgba(0,0,0,0.55)]" aria-hidden />
