@@ -808,7 +808,7 @@ export default function UniverseBrowser() {
             </section>
 
             <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
-              UNIVERSE · v0.4
+              UNIVERSE · v0.5
             </p>
           </div>
         </div>

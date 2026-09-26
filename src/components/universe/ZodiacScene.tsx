@@ -91,7 +91,7 @@ const SIGNS: ZodiacSign[] = [
     lines: [[5, 6], [6, 7], [7, 2], [2, 8], [8, 0], [0, 4], [4, 1], [1, 3], [3, 2]],
   },
   {
-    key: 'virgo', symbol: '♍', name: '室女座', nameEn: 'Virgo', dates: '8.23 – 9.22', datesEn: 'Aug 23 – Sep 22',
+    key: 'virgo', symbol: '♍', name: '处女座', nameEn: 'Virgo', dates: '8.23 – 9.22', datesEn: 'Aug 23 – Sep 22',
     element: 'earth', ruler: '水星', rulerEn: 'Mercury', brightest: '角宿一 Spica', brightestEn: 'Spica', magnitude: '1.0',
     color: '#a3e635',
     story: '手持麦穗的农业女神得墨忒耳，也是掌管正义的阿斯特赖亚——最亮的那颗星角宿一，就是她手中的麦穗。',
@@ -122,7 +122,7 @@ const SIGNS: ZodiacSign[] = [
     lines: [[2, 1], [1, 4], [4, 0], [0, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 12]],
   },
   {
-    key: 'sagittarius', symbol: '♐', name: '人马座', nameEn: 'Sagittarius', dates: '11.23 – 12.21', datesEn: 'Nov 23 – Dec 21',
+    key: 'sagittarius', symbol: '♐', name: '射手座', nameEn: 'Sagittarius', dates: '11.23 – 12.21', datesEn: 'Nov 23 – Dec 21',
     element: 'fire', ruler: '木星', rulerEn: 'Jupiter', brightest: '箕宿三 Kaus Australis', brightestEn: 'Kaus Australis', magnitude: '1.8',
     color: '#fdba74',
     story: '半人马贤者喀戎弯弓瞄准天蝎；亮星组成的「茶壶」正对着银河中心——壶嘴冒出的「蒸汽」就是茫茫星海。',
@@ -140,7 +140,7 @@ const SIGNS: ZodiacSign[] = [
     lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 0]],
   },
   {
-    key: 'aquarius', symbol: '♒', name: '宝瓶座', nameEn: 'Aquarius', dates: '1.20 – 2.18', datesEn: 'Jan 20 – Feb 18',
+    key: 'aquarius', symbol: '♒', name: '水瓶座', nameEn: 'Aquarius', dates: '1.20 – 2.18', datesEn: 'Jan 20 – Feb 18',
     element: 'air', ruler: '土星 / 天王星', rulerEn: 'Saturn / Uranus', brightest: '虚宿一 Sadalsuud', brightestEn: 'Sadalsuud', magnitude: '2.9',
     color: '#6ee7b7',
     story: '特洛伊王子伽倪墨得斯容貌出众，被宙斯召上天为众神斟酒；宝瓶中倾出的是智慧与灵感之水。',
@@ -315,7 +315,7 @@ export default function ZodiacScene() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.06;
     controls.minDistance = 30;
-    controls.maxDistance = 220;
+    controls.maxDistance = 320;
     controls.maxPolarAngle = Math.PI * 0.55;
 
     /* --------------------------- background starfield --------------------------- */
@@ -385,6 +385,7 @@ export default function ZodiacScene() {
     const hitPoints: THREE.Points[] = [];
     const hitSprites: THREE.Sprite[] = [];
     const centers: THREE.Vector3[] = [];
+    const signRadius: number[] = [];
     const DIM = { line: 0.28, name: 0.8 };
     const LIT = { line: 0.95, name: 1 };
 
@@ -445,10 +446,11 @@ export default function ZodiacScene() {
         hitPoints.push(pts);
       });
 
-      const center = nodeVs
-        .reduce((acc, v) => acc.add(v), new THREE.Vector3())
-        .multiplyScalar(1 / nodeVs.length);
+      // bounding-box center + radius: stable framing target for curved figures
+      const box = new THREE.Box3().setFromPoints(nodeVs);
+      const center = box.getCenter(new THREE.Vector3());
       centers.push(center.clone());
+      signRadius.push(box.getSize(new THREE.Vector3()).length() / 2);
 
       const nameTex = makeSignLabelTexture(getLang() === 'en' ? sign.nameEn : sign.name);
       const nameMat = new THREE.SpriteMaterial({
@@ -459,7 +461,7 @@ export default function ZodiacScene() {
       });
       const nameSprite = new THREE.Sprite(nameMat);
       nameSprite.position.copy(center.clone().normalize().multiplyScalar(R + 16));
-      nameSprite.scale.set(46, 11.5, 1);
+      nameSprite.scale.set(30, 7.5, 1);
       nameSprite.userData.signIndex = idx;
       scene.add(nameSprite);
       disposables.push(nameTex, nameMat);
@@ -630,9 +632,27 @@ export default function ZodiacScene() {
         if (dir) {
           flightFrom.copy(camera.position);
           flightFromTgt.copy(controls.target);
-          flightTo.copy(dir).multiplyScalar(72);
-          flightTo.y += 6;
+          // frame the WHOLE figure: distance from its bounding radius and the
+          // narrower of the vertical/horizontal FOV (portrait phones are tight)
+          const r = signRadius[req] ?? 20;
+          const fovY = (camera.fov * Math.PI) / 180;
+          const fovX = 2 * Math.atan(Math.tan(fovY / 2) * camera.aspect);
+          const fovMin = Math.min(fovY, fovX);
+          // back away from the sky sphere so the whole figure fits the narrower FOV
+          const back = THREE.MathUtils.clamp((r * 1.7) / Math.sin(fovMin / 2), 30, 200);
+          flightTo.copy(dir).multiplyScalar(R + back);
+          flightTo.y += back * 0.1;
           flightToTgt.copy(dir).multiplyScalar(R);
+          // portrait: the profile card covers the top half — shift the whole
+          // view up so the figure lands in the clear space beneath it
+          if (camera.aspect < 0.85) {
+            const viewDir = new THREE.Vector3().subVectors(flightToTgt, flightTo).normalize();
+            const right = new THREE.Vector3().crossVectors(viewDir, new THREE.Vector3(0, 1, 0)).normalize();
+            const screenUp = new THREE.Vector3().crossVectors(right, viewDir).normalize();
+            const shift = back * 0.21; // 22% of the viewport height below centre
+            flightToTgt.addScaledVector(screenUp, shift);
+            flightTo.addScaledVector(screenUp, shift);
+          }
           flightT = 0;
           controls.enabled = false;
         }
@@ -660,9 +680,9 @@ export default function ZodiacScene() {
       // alternate-frame work: name sprite distance compensation + sun pulse
       if (frame % 2 === 0) {
         const camDist = camera.position.length();
-        const k = THREE.MathUtils.clamp(camDist / 120, 0.85, 1.7);
+        const k = THREE.MathUtils.clamp((camDist - R) / 140, 0.8, 1.3);
         for (const vis of signVis) {
-          vis.nameSprite.scale.set(46 * k, 11.5 * k, 1);
+          vis.nameSprite.scale.set(30 * k, 7.5 * k, 1);
         }
         const p = 1 + 0.08 * Math.sin(clock.elapsedTime * 2.4);
         sunSprite.scale.set(9 * p, 9 * p, 1);
@@ -704,7 +724,7 @@ export default function ZodiacScene() {
   return (
     <div ref={wrapRef} className="absolute inset-0" aria-label={L('十二星座场景', 'Zodiac scene')}>
       {/* top quick-focus chips */}
-      <div className="pointer-events-auto absolute left-1/2 top-[calc(var(--ui-safe-top)+3.4rem)] z-30 flex max-w-[94vw] -translate-x-1/2 flex-wrap justify-center gap-1.5 portrait:top-[132px]">
+      <div className="pointer-events-auto absolute left-1/2 top-[max(128px,calc(var(--ui-safe-top)+4.6rem))] z-30 flex max-w-[94vw] -translate-x-1/2 flex-wrap justify-center gap-1.5">
         {SIGNS.map((s, i) => {
           const active = focused === i || selected === i;
           return (
