@@ -5,7 +5,7 @@
  * toggle) to satisfy browser autoplay policies. Volume is intentionally low.
  */
 
-export type AmbientScene = 'solar' | 'galaxy' | 'blackhole';
+export type AmbientScene = 'solar' | 'galaxy' | 'blackhole' | 'zodiac';
 
 interface ScenePreset {
   rootHz: number;
@@ -50,6 +50,20 @@ const PRESETS: Record<AmbientScene, ScenePreset> = {
     breatheHz: 0.042,
     pulseHz: 0,
     master: 0.9,
+  },
+  // crystalline, mythic — a star-chart contemplation (zodiac)
+  zodiac: {
+    rootHz: 49,
+    fifthHz: 73.5,
+    subHz: 0,
+    droneGain: 0.4,
+    shimmerHz: 1240,
+    shimmerQ: 18,
+    shimmerGain: 0.055,
+    sweepHz: 0.06,
+    breatheHz: 0.045,
+    pulseHz: 0,
+    master: 0.88,
   },
   // deep, oppressive rumble with a slow heartbeat
   blackhole: {

@@ -2,9 +2,9 @@ English | [简体中文](README.md)
 
 # 🔭 Universe — Universe Browser
 
-A single-page immersive universe exploration app built with **Next.js + Three.js**. Three scenes — **Solar System / Milky Way / Black Hole** — rendered entirely with procedurally generated materials and particle systems, no external image assets. Roam from planetary orbits to the event horizon, right in your browser.
+A single-page immersive universe exploration app built with **Next.js + Three.js**. Four scenes — **Solar System / Milky Way / Black Hole / Zodiac** — rendered entirely with procedurally generated materials and particle systems, no external image assets. Roam from planetary orbits to the event horizon, right in your browser.
 
-![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/version-v0.3-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/version-v0.4-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
 ## 📸 Screenshots
 
@@ -38,6 +38,12 @@ A single-page immersive universe exploration app built with **Next.js + Three.js
 - **Star hover profiles**: spatial-index accelerated lookup showing spectral class / type / arm / distance from galactic center
 - **Personal star bookmarks**: click to bookmark stars (localStorage, named after BeiDou star officials), with fly-to and JSON export/import
 
+### ♈ Zodiac
+- **The twelve ecliptic constellations** on a sky sphere: real J2000 star positions, magnitude-graded stars, stick figures and classic asterisms like the Sagittarius Teapot
+- **Golden ecliptic ring** + live Sun-position marker (solar longitude computed from today's date — "Sun in Libra")
+- Click a sign: camera focus flight + profile card (date range, color-coded element, ruling planet, brightest star and mythology, fully bilingual)
+- Twelve quick-focus chips along the top
+
 ### 🕳️ Black Hole
 - **Custom shader accretion disk**: thin inner / thick outer profile, Keplerian differential rotation, fbm filaments, temperature ramp, **Doppler beaming** (one side brighter and bluer), white-hot inner edge — Interstellar style
 - **Screen-space gravitational lensing post-processing**: bent background starfield, photon ring, RGB dispersion, Einstein ring glow, smooth toggle
@@ -56,7 +62,8 @@ A single-page immersive universe exploration app built with **Next.js + Three.js
 - 📸 One-click screenshot download (including post-processing)
 - 🖥️ Three quality presets (HD / Balanced / Smooth) + **bidirectional FPS-adaptive governor** (auto downshift at low FPS, auto recovery with headroom; manual choice always wins)
 - 🔊 Fully synthesized Web Audio: per-scene ambient drones + UI event sounds with independent volume sliders
-- ⌨️ Shortcuts: `1/2/3` switch scenes · `M` master mute · `Space` pause the solar system · `,` settings
+- ⌨️ Shortcuts: `1/2/3/4` switch scenes · `M` master mute · `Space` pause the solar system · `,` settings
+- 🎬 **Cinematic scene travel**: the outgoing scene recedes into a point while the next grows from the depths (zoom-through, no jump cuts)
 - 📱 Mobile-ready: two-row portrait header, 44px touch targets, safe-area insets, pinch zoom
 - Bottom-left FPS badge (click/hover for render info)
 
