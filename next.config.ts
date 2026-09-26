@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  /* VibeHub static hosting exports to out/; default remains the standalone server */
+  output: process.env.VIBEHUB_STATIC ? "export" : "standalone",
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

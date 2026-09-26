@@ -1,8 +1,12 @@
 // Copy static assets into the standalone output so `node .next/standalone/server.js` can serve them.
 import { cpSync, existsSync } from "node:fs";
 
-cpSync(".next/static", ".next/standalone/.next/static", { recursive: true });
-if (existsSync("public")) {
-  cpSync("public", ".next/standalone/public", { recursive: true });
+if (existsSync(".next/standalone")) {
+  cpSync(".next/static", ".next/standalone/.next/static", { recursive: true });
+  if (existsSync("public")) {
+    cpSync("public", ".next/standalone/public", { recursive: true });
+  }
+  console.log("Standalone assets copied.");
+} else {
+  console.log("No standalone output (static export) - skipped.");
 }
-console.log("Standalone assets copied.");
