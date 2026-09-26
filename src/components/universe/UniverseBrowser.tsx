@@ -60,9 +60,9 @@ const SCENE_TABS: { id: SceneId; label: string; en: string; sub: string; icon: t
 ];
 
 /** Bilingual quality labels — quality.ts keeps Chinese-only labels, the UI translates. */
-const QUALITY_ZH = ['流畅', '均衡', '高清'] as const;
-const QUALITY_EN = ['Smooth', 'Balanced', 'HD'] as const;
-const QUALITY_SCALE_PERCENT = [50, 75, 100] as const;
+const QUALITY_ZH = ['流畅', '轻量', '均衡', '高清'] as const;
+const QUALITY_EN = ['Smooth', 'Light', 'Balanced', 'HD'] as const;
+const QUALITY_SCALE_PERCENT = [50, 62.5, 75, 100] as const;
 
 function SceneLoading() {
   useLang(); // subscribe so the loading text follows language switches
@@ -368,7 +368,7 @@ export default function UniverseBrowser() {
   const handleQualityCycle = useCallback(() => {
     const level = cycleQuality();
     setQualityLevel(level);
-    setRenderScale(Math.round(getRenderScale() * 100));
+    setRenderScale(getRenderScale() * 100);
     playEventSound('click');
   }, []);
 
@@ -621,8 +621,8 @@ export default function UniverseBrowser() {
           <button
             type="button"
             onClick={handleQualityCycle}
-            aria-label={L('切换渲染画质（高清 / 均衡 / 流畅）', 'Cycle render quality (HD / Balanced / Smooth)')}
-            title={L('渲染分辨率：高清 100% · 均衡 75% · 流畅 50%', 'Render scale: HD 100% · Balanced 75% · Smooth 50%')}
+            aria-label={L('切换渲染画质（高清 / 均衡 / 轻量 / 流畅）', 'Cycle render quality (HD / Balanced / Light / Smooth)')}
+            title={L('渲染分辨率：高清 100% · 均衡 75% · 轻量 62.5% · 流畅 50%', 'Render scale: HD 100% · Balanced 75% · Light 62.5% · Smooth 50%')}
             className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 text-zinc-300 backdrop-blur-xl transition-all duration-300 hover:border-violet-300/40 hover:bg-black/60 hover:text-violet-200 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11"
           >
             <Gauge className="h-4 w-4" aria-hidden />
@@ -808,7 +808,7 @@ export default function UniverseBrowser() {
             </section>
 
             <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
-              UNIVERSE · v0.5
+              UNIVERSE · v0.6
             </p>
           </div>
         </div>

@@ -334,6 +334,7 @@ export default function ZodiacScene() {
   const openSignRef = useRef<(i: number) => void>(() => {});
   const closeSignRef = useRef<() => void>(() => {});
   const emptyClickRef = useRef<() => void>(() => {});
+  const deselectRef = useRef<() => void>(() => {});
   const signFlightRef = useRef<number | null>(null); // UI → render-loop bridge
 
   useEffect(() => {
@@ -380,6 +381,10 @@ export default function ZodiacScene() {
     openSignRef.current = (i: number) => openSign(i);
     closeSignRef.current = closeCard;
     emptyClickRef.current = () => {
+      closeCard();
+      setFocused(null);
+    };
+    deselectRef.current = () => {
       closeCard();
       setFocused(null);
     };
@@ -696,6 +701,7 @@ export default function ZodiacScene() {
       signFlightRef.current = null;
       controls.enabled = true;
     };
+    const escReturnRef = { current: false }; // set when a panorama return is requested
     const onPointerLeave = () => {
       hoverIdx = null;
       renderer.domElement.style.cursor = 'grab';
@@ -707,6 +713,13 @@ export default function ZodiacScene() {
     el.addEventListener('pointerleave', onPointerLeave);
     el.addEventListener('pointerdown', cancelFlight);
     el.addEventListener('wheel', cancelFlight, { passive: true });
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return;
+      signFlightRef.current = null;
+      escReturnRef.current = true;
+      deselectRef.current();
+    };
+    window.addEventListener('keydown', onKey);
 
     /* ------------------------------ resize / quality ------------------------------ */
     const onResize = () => {
@@ -738,6 +751,17 @@ export default function ZodiacScene() {
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.1);
       frame++;
+
+      // Esc → glide back to the overview (UI → loop bridge)
+      if (escReturnRef.current) {
+        escReturnRef.current = false;
+        flightFrom.copy(camera.position);
+        flightFromTgt.copy(controls.target);
+        flightTo.set(0, 42, 124);
+        flightToTgt.set(0, 0, 0);
+        flightT = 0;
+        controls.enabled = false;
+      }
 
       // flight tween (UI / click → loop bridge)
       const req = signFlightRef.current;
@@ -823,6 +847,7 @@ export default function ZodiacScene() {
       el.removeEventListener('pointerleave', onPointerLeave);
       el.removeEventListener('pointerdown', cancelFlight);
       el.removeEventListener('wheel', cancelFlight);
+      window.removeEventListener('keydown', onKey);
       controls.dispose();
       disposables.forEach((d) => d.dispose());
       renderer.dispose();
