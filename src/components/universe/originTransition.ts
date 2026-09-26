@@ -41,7 +41,7 @@ export function playEnter(el: HTMLElement, cls = 'uni-origin-in') {
  * Play an exit animation; `onDone` fires when it finishes (animationend or the
  * duration timeout, whichever first). The caller should hide/unmount afterwards.
  */
-export function playExit(el: HTMLElement, cls = 'uni-origin-out', onDone?: () => void, durationMs = 260) {
+export function playExit(el: HTMLElement, cls = 'uni-origin-out', onDone?: () => void, durationMs = 380) {
   if (!el) {
     onDone?.();
     return;

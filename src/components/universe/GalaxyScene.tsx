@@ -408,7 +408,7 @@ export default function GalaxyScene() {
           cardClosingRef.current[key] = false;
           setOpenCard(key, false);
         },
-        240
+        380
       );
     },
     [setOpenCard]
@@ -528,7 +528,7 @@ export default function GalaxyScene() {
       setPanelCollapsed(true);
       return;
     }
-    playExit(el, 'uni-origin-out', () => setPanelCollapsed(true), 240);
+    playExit(el, 'uni-origin-out', () => setPanelCollapsed(true), 380);
   }, [closeCard]);
 
   /** Expand: the FAB shrinks away while the card grows out of the same point. */
@@ -538,7 +538,7 @@ export default function GalaxyScene() {
       const r = fab.getBoundingClientRect();
       statsAnchorRef.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       setFabExiting(true);
-      playExit(fab, 'uni-origin-out', () => setFabExiting(false), 240);
+      playExit(fab, 'uni-origin-out', () => setFabExiting(false), 380);
     }
     playEventSound('click');
     statsFromFabRef.current = true;
@@ -786,6 +786,9 @@ export default function GalaxyScene() {
     const stars = new THREE.Points(starGeo, starMat);
     stars.frustumCulled = false;
     stars.renderOrder = 0;
+    // perf: local transform never changes (only the parent galaxy group spins)
+    stars.matrixAutoUpdate = false;
+    stars.updateMatrix();
     galaxy.add(stars);
 
     /* ---------------- dark dust lanes: 26k GPU points ---------------- */
@@ -826,6 +829,9 @@ export default function GalaxyScene() {
     const dust = new THREE.Points(dustGeo, dustMat);
     dust.frustumCulled = false;
     dust.renderOrder = 1; // above stars so it darkens them
+    // perf: static local transform — skip per-frame matrix compose
+    dust.matrixAutoUpdate = false;
+    dust.updateMatrix();
     galaxy.add(dust);
 
     /* ---------------- glowing galactic core sprites ---------------- */
@@ -860,6 +866,9 @@ export default function GalaxyScene() {
       });
       const sp = new THREE.Sprite(mat);
       sp.scale.set(scale, scale, 1);
+      // perf: core glow sprites are static — skip per-frame matrix compose
+      sp.matrixAutoUpdate = false;
+      sp.updateMatrix();
       sp.renderOrder = 2;
       galaxy.add(sp);
       return sp;
@@ -874,9 +883,15 @@ export default function GalaxyScene() {
     const sunAngle = Math.log(SUN_R / 4) / 0.23; // arm-0 ridge, same log-spiral law as the stars
     const sunMarker = new THREE.Group();
     sunMarker.position.set(Math.cos(sunAngle) * SUN_R, 0.6, Math.sin(sunAngle) * SUN_R);
+    // perf: the marker's local transform never changes (only the ring child pulses)
+    sunMarker.matrixAutoUpdate = false;
+    sunMarker.updateMatrix();
     const sunDotGeo = new THREE.SphereGeometry(0.55, 16, 12);
     const sunDotMat = new THREE.MeshBasicMaterial({ color: 0xffd57a });
-    sunMarker.add(new THREE.Mesh(sunDotGeo, sunDotMat));
+    const sunDot = new THREE.Mesh(sunDotGeo, sunDotMat);
+    sunDot.matrixAutoUpdate = false;
+    sunDot.updateMatrix();
+    sunMarker.add(sunDot);
     const markerRingTex = makeGlowTexture([
       [0.0, 'rgba(255,205,110,0)'],
       [0.52, 'rgba(255,205,110,0)'],
@@ -917,6 +932,9 @@ export default function GalaxyScene() {
       const sp = new THREE.Sprite(mat);
       sp.position.set(Math.cos(ang) * spec.r, 0.5, Math.sin(ang) * spec.r);
       sp.scale.set(3.4, 3.4, 1);
+      // perf: arm markers are static — skip per-frame matrix compose
+      sp.matrixAutoUpdate = false;
+      sp.updateMatrix();
       galaxy.add(sp);
       armMarkerSprites.push(sp);
     }
@@ -1194,12 +1212,15 @@ export default function GalaxyScene() {
     /* ---------------- render loop ---------------- */
 
     const fps = createFpsMeter();
+    let chipFrame = 0; // perf: DOM chip projection runs every other frame (30 Hz, visually identical)
 
     const animate = () => {
       raf = requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
       const dt = Math.min(t - lastT, 0.1);
       lastT = t;
+      chipFrame++;
+      const updateChips = chipFrame % 2 === 0;
 
       galaxy.rotation.y += SPIN_RATE * dt;
       starMat.uniforms.uTime.value = t;
@@ -1217,7 +1238,7 @@ export default function GalaxyScene() {
       const sw = wrap.clientWidth;
       const sh = Math.max(1, wrap.clientHeight);
       const sunEl = sunLabelRef.current;
-      if (sunEl) {
+      if (updateChips && sunEl) {
         if (sunMarkerVisibleRef.current) {
           sunMarker.getWorldPosition(markerWorld);
           markerWorld.project(camera);
@@ -1235,7 +1256,7 @@ export default function GalaxyScene() {
       }
 
       // projected DOM labels for spiral-arm markers (F12)
-      if (armLabelsVisibleRef.current) {
+      if (updateChips && armLabelsVisibleRef.current) {
         for (let i = 0; i < ARM_SPECS.length; i++) {
           const el = armLabelRefs.current[i];
           if (!el) continue;
@@ -1303,7 +1324,7 @@ export default function GalaxyScene() {
       }
 
       // F30 — projected DOM chips for bookmarked stars
-      if (bookmarkSprites.length > 0) {
+      if (updateChips && bookmarkSprites.length > 0) {
         for (let i = 0; i < bookmarkSprites.length; i++) {
           const el = bookmarkLabelRefs.current[i];
           if (!el) continue;

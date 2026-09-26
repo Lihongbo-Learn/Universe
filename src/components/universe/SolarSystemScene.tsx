@@ -881,7 +881,7 @@ export default function SolarSystemScene() {
       if (infoGenRef.current !== gen) return; // reopened while closing — keep it
       infoExitingRef.current = false;
       setSelected(null); // unmount only after the collapse finished
-    }, 240);
+    }, 380);
   };
 
   const closeConCard = () => {
@@ -898,7 +898,7 @@ export default function SolarSystemScene() {
       if (conGenRef.current !== gen) return;
       conExitingRef.current = false;
       setSelCon(null);
-    }, 240);
+    }, 380);
   };
 
   const enterInfoCard = () => {
@@ -918,7 +918,7 @@ export default function SolarSystemScene() {
   };
 
   /* open helpers: cancel a still-running exit (a same-body re-click within the
-     240 ms close window would otherwise never re-fire the enter effect) */
+     380 ms close window would otherwise never re-fire the enter effect) */
   const openBody = (b: BodyInfo) => {
     closeConCard();
     if (infoExitingRef.current) {
@@ -985,7 +985,7 @@ export default function SolarSystemScene() {
     playExit(el, 'uni-origin-out', () => {
       panelExitingRef.current = false;
       setPanelCollapsed(true); // unmount only after the shrink finished
-    }, 240);
+    }, 380);
   };
 
   const expandPanel = (x: number, y: number) => {
@@ -1011,7 +1011,7 @@ export default function SolarSystemScene() {
     playExit(fab, 'uni-origin-out', () => {
       fabExitingRef.current = false;
       setFabLeaving(false); // unmount the fab only after its shrink finished
-    }, 240);
+    }, 380);
   };
 
   /* fab enter: grow out of the recorded collapse click point */
@@ -1127,6 +1127,8 @@ export default function SolarSystemScene() {
         sizeAttenuation: true,
       });
       const stars = new THREE.Points(geo, mat);
+      stars.matrixAutoUpdate = false; // static starfield — bake the matrix once
+      stars.updateMatrix();
       scene.add(stars);
     }
 
@@ -1155,7 +1157,10 @@ export default function SolarSystemScene() {
           transparent: true,
           opacity: CONSTELLATION_DIM.line,
         });
-        group.add(new THREE.LineSegments(lineGeo, lineMat));
+        const conLines = new THREE.LineSegments(lineGeo, lineMat);
+        conLines.matrixAutoUpdate = false; // static stick figure — bake the matrix once
+        conLines.updateMatrix();
+        group.add(conLines);
         disposables.push(lineGeo, lineMat);
 
         const parr = new Float32Array(nodeVs.length * 3);
@@ -1178,6 +1183,8 @@ export default function SolarSystemScene() {
         });
         const points = new THREE.Points(pgeo, pmat);
         points.userData.constellationIndex = idx;
+        points.matrixAutoUpdate = false; // static node stars — bake the matrix once
+        points.updateMatrix();
         group.add(points);
         disposables.push(pgeo, pmat);
         conHitPoints.push(points);
@@ -1293,6 +1300,8 @@ export default function SolarSystemScene() {
       });
       const orbitLine = new THREE.LineLoop(lineGeo, lineMat);
       orbitLine.visible = orbitsVisibleRef.current;
+      orbitLine.matrixAutoUpdate = false; // static ellipse — bake the matrix once
+      orbitLine.updateMatrix();
       orbitGroup.add(orbitLine);
       orbitLinesRef.current.push(orbitLine);
       disposables.push(lineGeo, lineMat);
@@ -1491,6 +1500,8 @@ export default function SolarSystemScene() {
       });
       const points = new THREE.Points(geo, mat);
       points.frustumCulled = false;
+      points.matrixAutoUpdate = false; // belt grains move via the position attribute, not the matrix
+      points.updateMatrix();
       scene.add(points);
       disposables.push(geo, mat);
       belts.push({ geo, count, r, y, angle0, angSpeed });
@@ -1530,6 +1541,8 @@ export default function SolarSystemScene() {
       const cometOrbitLine = new THREE.Line(lineGeo, lineMat);
       cometOrbitLine.computeLineDistances();
       cometOrbitLine.visible = orbitsVisibleRef.current;
+      cometOrbitLine.matrixAutoUpdate = false; // static ellipse — bake the matrix once
+      cometOrbitLine.updateMatrix();
       orbitGroup.add(cometOrbitLine);
       orbitLinesRef.current.push(cometOrbitLine);
       disposables.push(lineGeo, lineMat);
@@ -1667,6 +1680,8 @@ export default function SolarSystemScene() {
     meteorLines.frustumCulled = false;
     meteorLines.renderOrder = 3;
     meteorLines.visible = meteorsVisibleRef.current;
+    meteorLines.matrixAutoUpdate = false; // streaks move via the position attribute, not the matrix
+    meteorLines.updateMatrix();
     scene.add(meteorLines);
     disposables.push(meteorGeo, meteorMat);
 
@@ -1699,6 +1714,7 @@ export default function SolarSystemScene() {
     meteorPos.fill(0);
 
     let meteorSpawnAcc = 0;
+    let meteorDtCarry = 0; // wall-clock dt accumulated on interleaved-off frames
     const meteorTangent = new THREE.Vector3();
 
     const spawnMeteor = () => {
@@ -1800,8 +1816,14 @@ export default function SolarSystemScene() {
       downT = performance.now();
     };
 
+    // hover raycasts (2 per move event) run at most every 100 ms; clicks on
+    // pointerup always raycast at full precision regardless of this throttle
+    let lastHoverT = 0;
     const onPointerMove = (ev: PointerEvent) => {
       if (isDown) return;
+      const nowT = performance.now();
+      if (nowT - lastHoverT < 100) return;
+      lastHoverT = nowT;
       const el = renderer.domElement;
       const conIdx = pickConstellation(ev);
       if (conIdx >= 0) {
@@ -2237,98 +2259,109 @@ export default function SolarSystemScene() {
       // F22 — Orionid meteor shower: intensity peaks while the Earth sweeps
       // past Halley's debris-node longitude (wall-clock burst on toggle-on)
       meteorLines.visible = meteorsVisibleRef.current;
-      const nowMs = performance.now();
-      let intensity = 0;
       if (meteorsVisibleRef.current) {
-        const earth = tmp[2]; // PLANETS[2] = Earth
-        // F33 — compare TRUE longitudes (same geometry as the visuals)
-        const Mea = earth.angle0 + simTime * earth.angSpeed - earth.periRad;
-        keplerTrueAnomaly(Mea, earth.ecc, KEPLER_OUT);
-        const uea = earth.omegaRad + KEPLER_OUT.nu;
-        const ea =
-          earth.nodeRad + Math.atan2(Math.sin(uea) * Math.cos(earth.inclRad), Math.cos(uea));
-        let dLon = ea - halleyNodeLon;
-        dLon = ((dLon + Math.PI) % TAU + TAU) % TAU - Math.PI; // wrap to [-π, π]
-        intensity = Math.exp(-(dLon * dLon) / (2 * METEOR_SIGMA * METEOR_SIGMA));
-        if (nowMs < meteorBurstUntilRef.current) intensity = Math.max(intensity, 0.9);
+        // Pool update interleaved every other frame (frameParity): wall-clock
+        // dt accumulates on skipped frames, so streak speed and spawn rate
+        // stay identical to a per-frame update at half the CPU cost.
+        meteorDtCarry += dt;
+        if (frameParity === 0) {
+          const mdt = meteorDtCarry;
+          meteorDtCarry = 0;
+          let intensity = 0;
+          const earth = tmp[2]; // PLANETS[2] = Earth
+          // F33 — compare TRUE longitudes (same geometry as the visuals)
+          const Mea = earth.angle0 + simTime * earth.angSpeed - earth.periRad;
+          keplerTrueAnomaly(Mea, earth.ecc, KEPLER_OUT);
+          const uea = earth.omegaRad + KEPLER_OUT.nu;
+          const ea =
+            earth.nodeRad + Math.atan2(Math.sin(uea) * Math.cos(earth.inclRad), Math.cos(uea));
+          let dLon = ea - halleyNodeLon;
+          dLon = ((dLon + Math.PI) % TAU + TAU) % TAU - Math.PI; // wrap to [-π, π]
+          intensity = Math.exp(-(dLon * dLon) / (2 * METEOR_SIGMA * METEOR_SIGMA));
+          if (performance.now() < meteorBurstUntilRef.current) intensity = Math.max(intensity, 0.9);
 
-        meteorSpawnAcc += dt * (1.4 + 30 * intensity);
-        while (meteorSpawnAcc >= 1) {
-          meteorSpawnAcc -= 1;
-          spawnMeteor();
-        }
-
-        // advance streaks (wall-clock: meteors are transient sky events)
-        for (let i = 0; i < METEOR_MAX; i++) {
-          const m = meteors[i];
-          const o = i * 6;
-          if (!m.alive) {
-            meteorCol[o] = 0;
-            meteorCol[o + 1] = 0;
-            meteorCol[o + 2] = 0;
-            meteorCol[o + 3] = 0;
-            meteorCol[o + 4] = 0;
-            meteorCol[o + 5] = 0;
-            continue;
+          meteorSpawnAcc += mdt * (1.4 + 30 * intensity);
+          while (meteorSpawnAcc >= 1) {
+            meteorSpawnAcc -= 1;
+            spawnMeteor();
           }
-          m.age += dt;
-          if (m.age >= m.life) {
-            m.alive = false;
-            meteorCol[o] = 0;
-            meteorCol[o + 1] = 0;
-            meteorCol[o + 2] = 0;
-            meteorCol[o + 3] = 0;
-            meteorCol[o + 4] = 0;
-            meteorCol[o + 5] = 0;
-            continue;
-          }
-          const f = m.age / m.life;
-          const alpha = (1 - f) * (1 - f);
-          const grow = Math.min(m.age * 3, 1); // tail stretches in quickly
-          const hx = m.pos.x + m.dir.x * m.speed * m.age;
-          const hy = m.pos.y + m.dir.y * m.speed * m.age;
-          const hz = m.pos.z + m.dir.z * m.speed * m.age;
-          meteorPos[o] = hx;
-          meteorPos[o + 1] = hy;
-          meteorPos[o + 2] = hz;
-          meteorPos[o + 3] = hx - m.dir.x * m.len * grow;
-          meteorPos[o + 4] = hy - m.dir.y * m.len * grow;
-          meteorPos[o + 5] = hz - m.dir.z * m.len * grow;
-          const hr = m.warm ? 1.0 : 0.78;
-          const hg = m.warm ? 0.86 : 0.9;
-          const hb = m.warm ? 0.62 : 1.0;
-          meteorCol[o] = hr * alpha;
-          meteorCol[o + 1] = hg * alpha;
-          meteorCol[o + 2] = hb * alpha;
-          meteorCol[o + 3] = hr * alpha * 0.18;
-          meteorCol[o + 4] = hg * alpha * 0.18;
-          meteorCol[o + 5] = hb * alpha * 0.28;
-        }
-        meteorGeo.attributes.position.needsUpdate = true;
-        meteorGeo.attributes.color.needsUpdate = true;
 
-        // live activity line under the switch (direct DOM write, no re-render)
-        const status = meteorStatusRef.current;
-        if (status) {
-          const en = getLang() === 'en';
-          status.textContent =
-            intensity > 0.5
-              ? en
-                ? "☄ Peak activity · Earth is crossing Halley's orbit"
-                : '☄ 极大期 · 地球正穿越哈雷彗星轨道'
-              : intensity > 0.12
+          // advance streaks (wall-clock: meteors are transient sky events)
+          for (let i = 0; i < METEOR_MAX; i++) {
+            const m = meteors[i];
+            const o = i * 6;
+            if (!m.alive) {
+              meteorCol[o] = 0;
+              meteorCol[o + 1] = 0;
+              meteorCol[o + 2] = 0;
+              meteorCol[o + 3] = 0;
+              meteorCol[o + 4] = 0;
+              meteorCol[o + 5] = 0;
+              continue;
+            }
+            m.age += mdt;
+            if (m.age >= m.life) {
+              m.alive = false;
+              meteorCol[o] = 0;
+              meteorCol[o + 1] = 0;
+              meteorCol[o + 2] = 0;
+              meteorCol[o + 3] = 0;
+              meteorCol[o + 4] = 0;
+              meteorCol[o + 5] = 0;
+              continue;
+            }
+            const f = m.age / m.life;
+            const alpha = (1 - f) * (1 - f);
+            const grow = Math.min(m.age * 3, 1); // tail stretches in quickly
+            const hx = m.pos.x + m.dir.x * m.speed * m.age;
+            const hy = m.pos.y + m.dir.y * m.speed * m.age;
+            const hz = m.pos.z + m.dir.z * m.speed * m.age;
+            meteorPos[o] = hx;
+            meteorPos[o + 1] = hy;
+            meteorPos[o + 2] = hz;
+            meteorPos[o + 3] = hx - m.dir.x * m.len * grow;
+            meteorPos[o + 4] = hy - m.dir.y * m.len * grow;
+            meteorPos[o + 5] = hz - m.dir.z * m.len * grow;
+            const hr = m.warm ? 1.0 : 0.78;
+            const hg = m.warm ? 0.86 : 0.9;
+            const hb = m.warm ? 0.62 : 1.0;
+            meteorCol[o] = hr * alpha;
+            meteorCol[o + 1] = hg * alpha;
+            meteorCol[o + 2] = hb * alpha;
+            meteorCol[o + 3] = hr * alpha * 0.18;
+            meteorCol[o + 4] = hg * alpha * 0.18;
+            meteorCol[o + 5] = hb * alpha * 0.28;
+          }
+          meteorGeo.attributes.position.needsUpdate = true;
+          meteorGeo.attributes.color.needsUpdate = true;
+
+          // live activity line under the switch (direct DOM write, no re-render)
+          const status = meteorStatusRef.current;
+          if (status) {
+            const en = getLang() === 'en';
+            status.textContent =
+              intensity > 0.5
                 ? en
-                  ? "Increased activity · nearing Halley's orbital node"
-                  : '活动增强 · 接近哈雷轨道节点'
-                : en
-                  ? 'Sporadic meteors · waiting for Earth to reach the node'
-                  : '零星背景流星 · 等待地球抵达节点';
+                  ? "☄ Peak activity · Earth is crossing Halley's orbit"
+                  : '☄ 极大期 · 地球正穿越哈雷彗星轨道'
+                : intensity > 0.12
+                  ? en
+                    ? "Increased activity · nearing Halley's orbital node"
+                    : '活动增强 · 接近哈雷轨道节点'
+                  : en
+                    ? 'Sporadic meteors · waiting for Earth to reach the node'
+                    : '零星背景流星 · 等待地球抵达节点';
+          }
         }
       }
 
       // projected DOM labels (direct style writes, no React renders)
       // with greedy screen-space de-overlap (F9)
-      if (labelsVisibleRef.current) {
+      // Throttled to every other frame (frameParity): projection + style writes
+      // are pure CPU, and a 30 Hz label refresh is visually indistinguishable.
+      // The whole block — projection, de-overlap, transform — stays in one
+      // batch so avoidance always sees a consistent set of positions.
+      if (labelsVisibleRef.current && frameParity === 0) {
         const w = wrap.clientWidth;
         const h = Math.max(1, wrap.clientHeight);
         placedLabels.length = 0;

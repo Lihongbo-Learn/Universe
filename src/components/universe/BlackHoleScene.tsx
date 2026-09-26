@@ -411,7 +411,7 @@ export default function BlackHoleScene() {
       const legend = lightLegendRef.current;
       if (legend) {
         setLightLegendClosing(true);
-        playExit(legend, 'uni-origin-out', () => setLightLegendClosing(false), 240);
+        playExit(legend, 'uni-origin-out', () => setLightLegendClosing(false), 380);
       }
     }
     playEventSound('click'); // F23
@@ -442,7 +442,7 @@ export default function BlackHoleScene() {
         if (scienceExitSeqRef.current !== seq) return;
         setShowScience(false);
         setScienceClosing(false);
-      }, 240);
+      }, 380);
     } else {
       scienceExitSeqRef.current++; // invalidate any pending exit callback
       sciencePointRef.current = { x: e.clientX, y: e.clientY };
@@ -472,7 +472,7 @@ export default function BlackHoleScene() {
     };
     // The floating button shrinks away first, then the bar grows out of its spot.
     const fab = panelFabRef.current;
-    if (fab) playExit(fab, 'uni-origin-out', expand, 240);
+    if (fab) playExit(fab, 'uni-origin-out', expand, 380);
     else expand();
   };
 
@@ -485,7 +485,7 @@ export default function BlackHoleScene() {
         setPanelCollapsed(true);
         return;
       }
-      playExit(bar, 'uni-origin-out', () => setPanelCollapsed(true), 240);
+      playExit(bar, 'uni-origin-out', () => setPanelCollapsed(true), 380);
     };
     // If the science card is open, let it finish its own exit first so it never
     // gets cut off by the bar unmounting (it is rendered inside the bar).
@@ -498,7 +498,7 @@ export default function BlackHoleScene() {
         setShowScience(false);
         setScienceClosing(false);
         collapseNow();
-      }, 240);
+      }, 380);
     } else {
       collapseNow();
     }
@@ -543,6 +543,8 @@ export default function BlackHoleScene() {
       renderer.setSize(wrap.clientWidth || 1, wrap.clientHeight || 1);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 0.95;
+      // Perf: skip runtime shader re-validation in production (shaders are static here).
+      renderer.debug.checkShaderErrors = false;
       renderer.domElement.style.display = 'block';
       wrap.appendChild(renderer.domElement);
 
@@ -571,6 +573,9 @@ export default function BlackHoleScene() {
       const hole = new THREE.Mesh(holeGeometry, holeMaterial);
       geometries.push(holeGeometry);
       materials.push(holeMaterial);
+      // Perf: the hole never moves — bake its matrix once and skip per-frame updates.
+      hole.matrixAutoUpdate = false;
+      hole.updateMatrix();
       scene.add(hole);
 
       /* ---------------- accretion disk (custom shader) ---------------- */
@@ -615,6 +620,9 @@ export default function BlackHoleScene() {
       const { geometry: starGeometry, material: starMaterial } = buildStarField(starTexture, pixelRatio);
       const stars = new THREE.Points(starGeometry, starMaterial);
       stars.frustumCulled = false;
+      // Perf: the starfield is static — bake its matrix once (twinkle is shader-side).
+      stars.matrixAutoUpdate = false;
+      stars.updateMatrix();
       geometries.push(starGeometry);
       materials.push(starMaterial);
       textures.push(starTexture);
@@ -636,6 +644,9 @@ export default function BlackHoleScene() {
         const sprite = new THREE.Sprite(material);
         sprite.position.set(spec.position[0], spec.position[1], spec.position[2]);
         sprite.scale.set(spec.scale, spec.scale * spec.scaleY, 1);
+        // Perf: position/scale never change — bake once (billboarding is shader-side for Sprites).
+        sprite.matrixAutoUpdate = false;
+        sprite.updateMatrix();
         scene.add(sprite);
       }
 
@@ -826,7 +837,9 @@ export default function BlackHoleScene() {
       const composer = new EffectComposer(renderer);
       const renderPass = new RenderPass(scene, camera);
       const lensPass = createLensingPass();
-      const bloomPass = new UnrealBloomPass(new THREE.Vector2(wrap.clientWidth || 1, wrap.clientHeight || 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+      // Perf: bloom runs at half resolution — the glow is a low-frequency effect,
+      // so the visual difference is negligible while the mip/blur chain costs ~4x less.
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2((wrap.clientWidth || 1) / 2, (wrap.clientHeight || 1) / 2), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
       const outputPass = new OutputPass();
       composer.addPass(renderPass);
       composer.addPass(lensPass);
@@ -843,9 +856,11 @@ export default function BlackHoleScene() {
         const pr = baseDpr * getRenderScale();
         renderer.setPixelRatio(pr);
         renderer.setSize(w, h);
-        // composer.setSize resizes both buffers AND every pass (bloom included).
+        // composer.setSize resizes both buffers AND every pass (bloom included),
+        // so re-apply the half-resolution bloom targets afterwards.
         composer.setPixelRatio(pr);
         composer.setSize(w, h);
+        bloomPass.setSize(Math.floor(w / 2), Math.floor(h / 2));
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         lensPass.uniforms.uAspect.value = w / h;
@@ -884,6 +899,7 @@ export default function BlackHoleScene() {
       let wallTime = 0; // F35 — real-time clock for the pause-breathing shimmer
       let lensTime = 0;
       let lensMix = 0; // lerps toward target each frame (smooth toggle)
+      let lensFrame = 1; // parity counter: recompute uCenter/uRs every other frame (starts 1 so frame 0 computes)
       let bloomMix = 0;
 
       const tick = () => {
@@ -1017,17 +1033,23 @@ export default function BlackHoleScene() {
         lensPass.uniforms.uEnabled.value = lensMix;
         lensPass.enabled = lensTarget === 1 || lensMix > 0.005;
         if (inFront) {
-          tmpProject.set(0, 0, 0).project(camera); // NDC -> uv (y already bottom-up)
-          const cx = tmpProject.x * 0.5 + 0.5;
-          const cy = tmpProject.y * 0.5 + 0.5;
-          tmpRight.setFromMatrixColumn(camera.matrixWorld, 0); // camera right * 1.0
-          tmpProject.copy(tmpRight).project(camera);
-          const px = tmpProject.x * 0.5 + 0.5;
-          const py = tmpProject.y * 0.5 + 0.5;
-          // Aspect-corrected uv distance (in uv-y units), 1.5x the sphere radius.
-          const rs = Math.hypot((px - cx) * camera.aspect, py - cy) * 1.5;
-          lensPass.uniforms.uCenter.value.set(cx, cy);
-          lensPass.uniforms.uRs.value = THREE.MathUtils.clamp(rs, 0.02, 0.48);
+          // Perf: the CPU projection is throttled to every other frame — on odd
+          // frames the lens uniforms simply keep the previous frame's values
+          // (the hole/screen barely move within 16 ms).
+          lensFrame = (lensFrame + 1) % 2;
+          if (lensFrame === 0) {
+            tmpProject.set(0, 0, 0).project(camera); // NDC -> uv (y already bottom-up)
+            const cx = tmpProject.x * 0.5 + 0.5;
+            const cy = tmpProject.y * 0.5 + 0.5;
+            tmpRight.setFromMatrixColumn(camera.matrixWorld, 0); // camera right * 1.0
+            tmpProject.copy(tmpRight).project(camera);
+            const px = tmpProject.x * 0.5 + 0.5;
+            const py = tmpProject.y * 0.5 + 0.5;
+            // Aspect-corrected uv distance (in uv-y units), 1.5x the sphere radius.
+            const rs = Math.hypot((px - cx) * camera.aspect, py - cy) * 1.5;
+            lensPass.uniforms.uCenter.value.set(cx, cy);
+            lensPass.uniforms.uRs.value = THREE.MathUtils.clamp(rs, 0.02, 0.48);
+          }
         }
 
         // ---- bloom smooth toggle ----
