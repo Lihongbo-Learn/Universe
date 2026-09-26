@@ -1,0 +1,838 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { X, Flame, Mountain, Wind, Droplets } from 'lucide-react';
+import { L, useLang, getLang, subscribeLang } from './i18n';
+import { playEnter, playExit, setOriginFromPoint } from './originTransition';
+import { playEventSound } from './soundscape';
+import { createFpsMeter } from './fps';
+import { registerCapturer } from './capture';
+import { getRenderScale, onRenderScaleChange } from './quality';
+import { getStarSpriteTexture } from './proceduralTextures';
+
+/**
+ * Zodiac scene — the twelve ecliptic constellations on a sky sphere.
+ * Approximate J2000 star positions, bilingual name sprites, click-to-focus
+ * cards with origin-aware transitions.
+ */
+
+const R = 100; // sky-sphere radius
+
+type ElementKind = 'fire' | 'earth' | 'air' | 'water';
+
+interface ZodiacSign {
+  key: string;
+  symbol: string;
+  name: string;
+  nameEn: string;
+  dates: string;
+  datesEn: string;
+  element: ElementKind;
+  ruler: string;
+  rulerEn: string;
+  brightest: string;
+  brightestEn: string;
+  magnitude: string;
+  color: string;
+  story: string;
+  storyEn: string;
+  /** [RA hours, Dec degrees, magnitude] per node star */
+  stars: [number, number, number][];
+  /** index pairs chained with lines */
+  lines: [number, number][];
+}
+
+const SIGNS: ZodiacSign[] = [
+  {
+    key: 'aries', symbol: '♈', name: '白羊座', nameEn: 'Aries', dates: '3.21 – 4.19', datesEn: 'Mar 21 – Apr 19',
+    element: 'fire', ruler: '火星', rulerEn: 'Mars', brightest: '娄宿三 Hamal', brightestEn: 'Hamal', magnitude: '2.0',
+    color: '#fb7185',
+    story: '金羊毛传说：王子佛里克索斯骑着会飞的金羊渡海逃亡，金羊后来被献祭给宙斯，升上天空成为白羊座；金羊毛的故事由此展开。',
+    storyEn: 'The golden ram that carried Prince Phrixus over the sea; sacrificed to Zeus afterwards, it leapt into the sky — and the quest for its fleece became legend.',
+    stars: [[2.12, 23.46, 2.0], [1.91, 20.81, 2.6], [1.89, 19.29, 3.9], [2.83, 27.26, 3.6]],
+    lines: [[2, 1], [1, 0], [0, 3]],
+  },
+  {
+    key: 'taurus', symbol: '♉', name: '金牛座', nameEn: 'Taurus', dates: '4.20 – 5.20', datesEn: 'Apr 20 – May 20',
+    element: 'earth', ruler: '金星', rulerEn: 'Venus', brightest: '毕宿五 Aldebaran', brightestEn: 'Aldebaran', magnitude: '0.9',
+    color: '#fbbf24',
+    story: '宙斯化身雪白公牛驮走腓尼基公主欧罗巴，渡海到达克里特；这片大陆从此以她命名为欧罗巴（欧洲）。',
+    storyEn: 'Zeus carried the princess Europa across the sea as a gleaming white bull — the continent she landed on still bears her name.',
+    stars: [[4.6, 16.51, 0.9], [5.44, 28.61, 1.7], [5.63, 21.14, 3.0], [4.48, 15.87, 3.4], [4.33, 15.63, 3.7], [4.48, 19.18, 3.5], [4.01, 12.49, 3.5]],
+    lines: [[6, 4], [4, 3], [3, 0], [0, 2], [5, 1], [4, 5]],
+  },
+  {
+    key: 'gemini', symbol: '♊', name: '双子座', nameEn: 'Gemini', dates: '5.21 – 6.21', datesEn: 'May 21 – Jun 21',
+    element: 'air', ruler: '水星', rulerEn: 'Mercury', brightest: '北河三 Pollux', brightestEn: 'Pollux', magnitude: '1.1',
+    color: '#93c5fd',
+    story: '斯巴达双子卡斯托尔与波吕丢刻斯，一个凡人一个永生；弟弟把不朽分给兄长，宙斯感其情义让他们共享神籍，永不分离。',
+    storyEn: 'Castor was mortal, Pollux immortal; when Castor fell, Pollux shared his immortality so the twins would never be parted.',
+    stars: [[7.58, 31.89, 1.6], [7.75, 28.03, 1.1], [6.63, 16.4, 1.9], [6.38, 22.51, 2.9], [6.73, 25.13, 3.0], [7.33, 21.98, 3.5], [7.74, 24.4, 3.6], [7.19, 30.23, 4.4]],
+    lines: [[0, 7], [7, 4], [1, 5], [5, 2], [0, 1], [1, 6]],
+  },
+  {
+    key: 'cancer', symbol: '♋', name: '巨蟹座', nameEn: 'Cancer', dates: '6.22 – 7.22', datesEn: 'Jun 22 – Jul 22',
+    element: 'water', ruler: '月亮', rulerEn: 'The Moon', brightest: '柳宿增十 Al Tarf', brightestEn: 'Al Tarf', magnitude: '3.5',
+    color: '#60a5fa',
+    story: '赫拉克勒斯大战九头蛇时，天后赫拉派出一只巨蟹偷袭；螃蟹被踩碎后，赫拉把它升上天空作为纪念。',
+    storyEn: "Hera sent a crab to distract Heracles during his fight with the Hydra; crushed underfoot, it was lifted to the sky in her honour.",
+    stars: [[8.97, 11.86, 4.3], [8.28, 9.19, 3.5], [8.75, 18.15, 3.9], [8.72, 21.47, 4.7]],
+    lines: [[1, 2], [2, 3], [2, 0]],
+  },
+  {
+    key: 'leo', symbol: '♌', name: '狮子座', nameEn: 'Leo', dates: '7.23 – 8.22', datesEn: 'Jul 23 – Aug 22',
+    element: 'fire', ruler: '太阳', rulerEn: 'The Sun', brightest: '轩辕十四 Regulus', brightestEn: 'Regulus', magnitude: '1.4',
+    color: '#fcd34d',
+    story: '涅墨亚狮子刀枪不入，是赫拉克勒斯十二功绩的第一战；狮子的皮后来成了英雄的战甲。',
+    storyEn: "The Nemean lion's hide was impervious to weapons — the first of Heracles' twelve labours; its pelt became the hero's armour.",
+    stars: [[10.14, 11.97, 1.4], [11.82, 14.57, 2.1], [10.33, 19.84, 2.6], [11.24, 20.52, 2.6], [11.24, 15.43, 3.3], [9.76, 23.77, 3.0], [9.88, 26.01, 3.9], [10.28, 23.42, 3.4], [10.12, 16.76, 3.5]],
+    lines: [[5, 6], [6, 7], [7, 2], [2, 8], [8, 0], [0, 4], [4, 1], [1, 3], [3, 2]],
+  },
+  {
+    key: 'virgo', symbol: '♍', name: '室女座', nameEn: 'Virgo', dates: '8.23 – 9.22', datesEn: 'Aug 23 – Sep 22',
+    element: 'earth', ruler: '水星', rulerEn: 'Mercury', brightest: '角宿一 Spica', brightestEn: 'Spica', magnitude: '1.0',
+    color: '#a3e635',
+    story: '手持麦穗的农业女神得墨忒耳，也是掌管正义的阿斯特赖亚——最亮的那颗星角宿一，就是她手中的麦穗。',
+    storyEn: 'The maiden with the ear of wheat — harvest goddess Demeter, or Astraea of justice; her brightest star Spica is the wheat grain itself.',
+    stars: [[13.42, -11.16, 1.0], [13.04, 10.96, 2.8], [12.69, -1.45, 2.7], [13.58, -0.6, 3.4], [12.93, 3.4, 3.4], [12.33, -0.67, 3.9], [11.84, 1.76, 3.6]],
+    lines: [[6, 5], [5, 2], [2, 3], [3, 1], [2, 0], [0, 4]],
+  },
+  {
+    key: 'libra', symbol: '♎', name: '天秤座', nameEn: 'Libra', dates: '9.23 – 10.23', datesEn: 'Sep 23 – Oct 23',
+    element: 'air', ruler: '金星', rulerEn: 'Venus', brightest: '氐宿四 Zubeneschamali', brightestEn: 'Zubeneschamali', magnitude: '2.6',
+    color: '#c4b5fd',
+    story: '正义女神衡量善恶的天平。它曾属于天蝎座的双螯，罗马人把它独立成座，象征昼夜平分的秋分。',
+    storyEn: 'The scales of Astraea weighing good against evil — once the claws of Scorpius, made a constellation of their own at the autumn equinox.',
+    stars: [[14.85, -16.04, 2.8], [15.28, -9.38, 2.6], [15.59, -14.79, 3.9], [15.07, -25.28, 3.3]],
+    lines: [[0, 1], [1, 2], [0, 3]],
+  },
+  {
+    key: 'scorpius', symbol: '♏', name: '天蝎座', nameEn: 'Scorpius', dates: '10.24 – 11.22', datesEn: 'Oct 24 – Nov 22',
+    element: 'water', ruler: '火星 / 冥王星', rulerEn: 'Mars / Pluto', brightest: '心宿二 Antares', brightestEn: 'Antares', magnitude: '1.0',
+    color: '#fda4af',
+    story: '毒蝎蜇死了傲慢的猎户俄里翁；众神把两者放上天球遥遥相对——猎户座升起时天蝎座便落下，永不相见。',
+    storyEn: 'The scorpion that stung the boastful hunter Orion: the two were set on opposite sides of the sky — Orion sets as Scorpius rises, never to meet.',
+    stars: [
+      [16.49, -26.43, 1.0], [16.01, -22.62, 2.3], [16.09, -19.81, 2.6], [15.98, -26.11, 2.9], [16.35, -25.59, 2.9],
+      [16.36, -28.22, 2.8], [16.84, -34.29, 2.3], [16.87, -38.05, 3.0], [16.91, -42.36, 3.6], [17.21, -43.24, 3.3],
+      [17.62, -43.0, 1.9], [17.79, -40.13, 3.0], [17.71, -39.03, 2.4], [17.56, -37.1, 1.6], [17.51, -37.3, 2.7],
+    ],
+    lines: [[2, 1], [1, 4], [4, 0], [0, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 12]],
+  },
+  {
+    key: 'sagittarius', symbol: '♐', name: '人马座', nameEn: 'Sagittarius', dates: '11.23 – 12.21', datesEn: 'Nov 23 – Dec 21',
+    element: 'fire', ruler: '木星', rulerEn: 'Jupiter', brightest: '箕宿三 Kaus Australis', brightestEn: 'Kaus Australis', magnitude: '1.8',
+    color: '#fdba74',
+    story: '半人马贤者喀戎弯弓瞄准天蝎；亮星组成的「茶壶」正对着银河中心——壶嘴冒出的「蒸汽」就是茫茫星海。',
+    storyEn: 'The archer centaur Chiron aiming at Scorpius; its bright stars form the famous Teapot, its steam the glow of the galactic centre.',
+    stars: [[18.4, -34.38, 1.8], [18.92, -26.3, 2.1], [19.04, -29.88, 2.6], [18.35, -29.83, 2.7], [18.47, -25.42, 2.8], [18.76, -26.99, 3.2], [19.12, -27.67, 3.3]],
+    lines: [[3, 0], [0, 2], [2, 6], [6, 1], [1, 4], [4, 3], [3, 5], [5, 1]],
+  },
+  {
+    key: 'capricornus', symbol: '♑', name: '摩羯座', nameEn: 'Capricornus', dates: '12.22 – 1.19', datesEn: 'Dec 22 – Jan 19',
+    element: 'earth', ruler: '土星', rulerEn: 'Saturn', brightest: '垒壁阵四 Deneb Algedi', brightestEn: 'Deneb Algedi', magnitude: '2.9',
+    color: '#d6d3d1',
+    story: '牧神潘为躲避怪物堤丰跃入尼罗河，来不及变完——上半身成了羊，下半身成了鱼。',
+    storyEn: 'Pan leapt into the Nile to escape the monster Typhon, half-transformed: goat above water, fish below.',
+    stars: [[20.3, -12.54, 3.6], [20.35, -14.78, 3.1], [20.78, -25.27, 4.1], [20.87, -26.92, 4.1], [21.78, -16.13, 2.9], [21.67, -16.66, 3.7], [21.1, -17.23, 4.1], [20.75, -16.8, 4.3]],
+    lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 0]],
+  },
+  {
+    key: 'aquarius', symbol: '♒', name: '宝瓶座', nameEn: 'Aquarius', dates: '1.20 – 2.18', datesEn: 'Jan 20 – Feb 18',
+    element: 'air', ruler: '土星 / 天王星', rulerEn: 'Saturn / Uranus', brightest: '虚宿一 Sadalsuud', brightestEn: 'Sadalsuud', magnitude: '2.9',
+    color: '#6ee7b7',
+    story: '特洛伊王子伽倪墨得斯容貌出众，被宙斯召上天为众神斟酒；宝瓶中倾出的是智慧与灵感之水。',
+    storyEn: 'Ganymede, the beautiful Trojan prince, poured nectar for the gods — from his jar flowed the waters of wisdom.',
+    stars: [[21.53, -5.57, 2.9], [22.1, -0.32, 3.0], [22.36, -1.39, 3.8], [22.48, -0.02, 3.7], [22.58, -0.12, 4.0], [22.88, -7.58, 3.7], [22.84, -13.59, 4.0], [22.91, -15.82, 3.3]],
+    lines: [[1, 0], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7]],
+  },
+  {
+    key: 'pisces', symbol: '♓', name: '双鱼座', nameEn: 'Pisces', dates: '2.19 – 3.20', datesEn: 'Feb 19 – Mar 20',
+    element: 'water', ruler: '木星 / 海王星', rulerEn: 'Jupiter / Neptune', brightest: '外屏七 Alrescha', brightestEn: 'Alrescha', magnitude: '3.8',
+    color: '#7dd3fc',
+    story: '怪物堤丰袭来时，爱与美之神阿佛洛狄忒拉着小厄洛斯化身双鱼跃入幼发拉底河；两条鱼被一根丝带永远系在一起。',
+    storyEn: 'Aphrodite and Eros escaped Typhon as two fish tied together by a cord — the knot is still drawn on star charts.',
+    stars: [[2.03, 2.76, 3.8], [1.75, 9.17, 4.3], [1.53, 15.35, 3.6], [1.05, 7.9, 4.3], [0.81, 7.59, 4.4], [23.29, 3.28, 3.7], [23.46, 6.38, 4.3], [23.66, 5.63, 4.1], [23.7, 1.78, 4.5], [23.44, 1.26, 4.9], [24.0, 6.86, 4.0]],
+    lines: [[5, 6], [6, 7], [7, 10], [10, 8], [8, 9], [9, 5], [3, 4], [4, 2], [2, 1], [1, 0], [4, 5]],
+  },
+];
+
+/* sign boundaries on the ecliptic: Aries 0–30°, Taurus 30–60°, … Pisces 330–360° */
+function sunEclipticLon(now: number): number {
+  const days = (now - Date.UTC(2000, 0, 1, 12)) / 86400000;
+  return ((280.46 + 0.9856474 * days) % 360 + 360) % 360;
+}
+
+function radecToVec3(raHours: number, decDeg: number, radius: number): THREE.Vector3 {
+  const ra = (raHours / 24) * Math.PI * 2;
+  const dec = THREE.MathUtils.degToRad(decDeg);
+  return new THREE.Vector3(
+    radius * Math.cos(dec) * Math.cos(ra),
+    radius * Math.sin(dec) * 0.85,
+    -radius * Math.cos(dec) * Math.sin(ra)
+  );
+}
+
+function makeSignLabelTexture(symbol: string, text: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.font = '500 24px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(230,214,170,0.95)';
+    ctx.fillText(`${symbol} ${text}`, 128, 34);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+interface SignVis {
+  lineMat: THREE.LineBasicMaterial;
+  nameMat: THREE.SpriteMaterial;
+  nameSprite: THREE.Sprite;
+}
+
+const ELEMENT_ICONS = { fire: Flame, earth: Mountain, air: Wind, water: Droplets } as const;
+const ELEMENT_COLOR: Record<ElementKind, string> = {
+  fire: '#fb7185',
+  earth: '#fbbf24',
+  air: '#67e8f9',
+  water: '#60a5fa',
+};
+const ELEMENT_LABEL: Record<ElementKind, [string, string]> = {
+  fire: ['火象', 'Fire'],
+  earth: ['土象', 'Earth'],
+  air: ['风象', 'Air'],
+  water: ['水象', 'Water'],
+};
+
+export default function ZodiacScene() {
+  useLang();
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [glError, setGlError] = useState(false);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [focused, setFocused] = useState<number | null>(null);
+
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const cardExitingRef = useRef(false);
+  const cardGenRef = useRef(0);
+  const cardOriginRef = useRef({ x: 0, y: 0 });
+  const focusedRef = useRef<number | null>(null);
+  const openSignRef = useRef<(i: number) => void>(() => {});
+  const closeSignRef = useRef<() => void>(() => {});
+  const signFlightRef = useRef<number | null>(null); // UI → render-loop bridge
+
+  useEffect(() => {
+    focusedRef.current = focused;
+  }, [focused]);
+
+  const closeCard = () => {
+    if (cardExitingRef.current) return;
+    const el = cardRef.current;
+    if (!el) {
+      setSelected(null);
+      return;
+    }
+    cardExitingRef.current = true;
+    const gen = cardGenRef.current + 1;
+    cardGenRef.current = gen;
+    playExit(el, 'uni-origin-out', () => {
+      if (cardGenRef.current !== gen) return;
+      cardExitingRef.current = false;
+      setSelected(null);
+    }, 380);
+  };
+
+  const openSign = (idx: number, origin?: { x: number; y: number }) => {
+    if (origin) cardOriginRef.current = origin;
+    if (cardExitingRef.current) {
+      cardGenRef.current += 1; // invalidate the pending exit
+      cardExitingRef.current = false;
+      if (selected === idx) {
+        const el = cardRef.current;
+        if (el) {
+          setOriginFromPoint(el, cardOriginRef.current.x, cardOriginRef.current.y);
+          playEnter(el, 'uni-origin-in');
+        }
+      }
+    }
+    setSelected(idx);
+    setFocused(idx);
+    signFlightRef.current = idx;
+    playEventSound('click');
+  };
+
+  useEffect(() => {
+    openSignRef.current = (i: number) => openSign(i);
+    closeSignRef.current = closeCard;
+  });
+
+  useEffect(() => {
+    if (selected === null) return;
+    cardGenRef.current += 1;
+    cardExitingRef.current = false;
+    const el = cardRef.current;
+    if (el) {
+      setOriginFromPoint(el, cardOriginRef.current.x, cardOriginRef.current.y);
+      playEnter(el, 'uni-origin-in');
+    }
+  }, [selected]);
+
+  /* ------------------------------ scene effect ------------------------------ */
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'high-performance',
+      });
+    } catch {
+      queueMicrotask(() => setGlError(true));
+      return;
+    }
+    renderer.debug.checkShaderErrors = false;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
+    camera.position.set(0, 42, 124);
+
+    const disposables: { dispose: () => void }[] = [];
+    const applyRenderScale = () => {
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * getRenderScale());
+    };
+    applyRenderScale();
+    renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+    wrap.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.minDistance = 30;
+    controls.maxDistance = 220;
+    controls.maxPolarAngle = Math.PI * 0.55;
+
+    /* --------------------------- background starfield --------------------------- */
+    {
+      const N = 2200;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        const v = new THREE.Vector3()
+          .randomDirection()
+          .multiplyScalar(380 + Math.random() * 60);
+        pos[i * 3] = v.x;
+        pos[i * 3 + 1] = Math.abs(v.y) * 0.9;
+        pos[i * 3 + 2] = v.z;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const mat = new THREE.PointsMaterial({
+        size: 1.5,
+        map: getStarSpriteTexture(),
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const pts = new THREE.Points(geo, mat);
+      pts.matrixAutoUpdate = false;
+      pts.updateMatrix();
+      scene.add(pts);
+      disposables.push(geo, mat);
+    }
+
+    /* ------------------------------- ecliptic ------------------------------- */
+    {
+      const eclipticMat = new THREE.LineBasicMaterial({
+        color: 0xf5d78e,
+        transparent: true,
+        opacity: 0.16,
+      });
+      const segs = 256;
+      const verts = new Float32Array((segs + 1) * 3);
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        verts[i * 3] = R * Math.cos(a);
+        verts[i * 3 + 1] = 0;
+        verts[i * 3 + 2] = -R * Math.sin(a);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      const ring = new THREE.Line(geo, eclipticMat);
+      ring.matrixAutoUpdate = false;
+      ring.updateMatrix();
+      scene.add(ring);
+      disposables.push(geo, eclipticMat);
+
+      const eclTex = makeSignLabelTexture('☉', getLang() === 'en' ? 'ECLIPTIC' : '黄道');
+      const eclMat = new THREE.SpriteMaterial({ map: eclTex, transparent: true, depthWrite: false, opacity: 0.8 });
+      const eclSprite = new THREE.Sprite(eclMat);
+      const eclAngle = THREE.MathUtils.degToRad(115);
+      eclSprite.position.set(R * Math.cos(eclAngle), 4, -R * Math.sin(eclAngle));
+      eclSprite.scale.set(40, 10, 1);
+      scene.add(eclSprite);
+      disposables.push(eclTex, eclMat);
+    }
+
+    /* ------------------------------- the 12 signs ------------------------------- */
+    const signVis: SignVis[] = [];
+    const hitPoints: THREE.Points[] = [];
+    const hitSprites: THREE.Sprite[] = [];
+    const centers: THREE.Vector3[] = [];
+    const DIM = { line: 0.28, name: 0.8 };
+    const LIT = { line: 0.95, name: 1 };
+
+    SIGNS.forEach((sign, idx) => {
+      const nodeVs = sign.stars.map(([ra, dec]) => radecToVec3(ra, dec, R));
+      const verts: number[] = [];
+      for (const [a, b] of sign.lines) {
+        const va = nodeVs[a];
+        const vb = nodeVs[b];
+        verts.push(va.x, va.y, va.z, vb.x, vb.y, vb.z);
+      }
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x9db0cc,
+        transparent: true,
+        opacity: DIM.line,
+      });
+      const lines = new THREE.LineSegments(lineGeo, lineMat);
+      lines.matrixAutoUpdate = false;
+      lines.updateMatrix();
+      scene.add(lines);
+      disposables.push(lineGeo, lineMat);
+
+      // node stars split into brightness tiers (PointsMaterial has one size)
+      const tiers: { max: number; size: number }[] = [
+        { max: 2.2, size: 7.5 },
+        { max: 3.2, size: 5 },
+        { max: 99, size: 3.4 },
+      ];
+      tiers.forEach((t, ti) => {
+        const lo = ti === 0 ? -99 : tiers[ti - 1].max;
+        const chosen = nodeVs.filter((_v, i) => sign.stars[i][2] <= t.max && sign.stars[i][2] > lo);
+        if (chosen.length === 0) return;
+        const parr = new Float32Array(chosen.length * 3);
+        chosen.forEach((v, i) => {
+          parr[i * 3] = v.x;
+          parr[i * 3 + 1] = v.y;
+          parr[i * 3 + 2] = v.z;
+        });
+        const pgeo = new THREE.BufferGeometry();
+        pgeo.setAttribute('position', new THREE.BufferAttribute(parr, 3));
+        const pmat = new THREE.PointsMaterial({
+          size: t.size,
+          map: getStarSpriteTexture(),
+          transparent: true,
+          opacity: 0.95,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          color: 0xfff3d6,
+        });
+        const pts = new THREE.Points(pgeo, pmat);
+        pts.userData.signIndex = idx;
+        pts.matrixAutoUpdate = false;
+        pts.updateMatrix();
+        scene.add(pts);
+        disposables.push(pgeo, pmat);
+        hitPoints.push(pts);
+      });
+
+      const center = nodeVs
+        .reduce((acc, v) => acc.add(v), new THREE.Vector3())
+        .multiplyScalar(1 / nodeVs.length);
+      centers.push(center.clone());
+
+      const nameTex = makeSignLabelTexture(sign.symbol, getLang() === 'en' ? sign.nameEn : sign.name);
+      const nameMat = new THREE.SpriteMaterial({
+        map: nameTex,
+        transparent: true,
+        opacity: DIM.name,
+        depthWrite: false,
+      });
+      const nameSprite = new THREE.Sprite(nameMat);
+      nameSprite.position.copy(center.clone().normalize().multiplyScalar(R + 16));
+      nameSprite.scale.set(46, 11.5, 1);
+      nameSprite.userData.signIndex = idx;
+      scene.add(nameSprite);
+      disposables.push(nameTex, nameMat);
+      hitSprites.push(nameSprite);
+
+      signVis.push({ lineMat, nameMat, nameSprite });
+    });
+
+    /* --------------------------- sun marker on the ecliptic --------------------------- */
+    const sunLon = sunEclipticLon(Date.now());
+    const sunSignIdx = Math.floor(sunLon / 30) % 12;
+    const sunSign = SIGNS[sunSignIdx];
+    const sunAngle = THREE.MathUtils.degToRad(sunLon);
+    const sunPos = new THREE.Vector3(R * Math.cos(sunAngle), 0, -R * Math.sin(sunAngle));
+    const sunSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: getStarSpriteTexture(),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        color: 0xffc24d,
+      })
+    );
+    sunSprite.position.copy(sunPos);
+    sunSprite.scale.set(9, 9, 1);
+    scene.add(sunSprite);
+    const sunSpriteMat = sunSprite.material as THREE.SpriteMaterial;
+    disposables.push(sunSpriteMat);
+
+    let sunLabel: THREE.Sprite | null = null;
+    const buildSunLabel = (): THREE.Sprite => {
+      const text = getLang() === 'en' ? `Sun in ${sunSign.nameEn}` : `太阳此刻在 ${sunSign.name}`;
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.font = '500 24px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(252,211,77,0.95)';
+        ctx.fillText(text, 128, 34);
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+      const label = new THREE.Sprite(mat);
+      label.position.copy(sunPos.clone().normalize().multiplyScalar(R + 14));
+      label.scale.set(52, 13, 1);
+      scene.add(label);
+      disposables.push(tex, mat);
+      return label;
+    };
+    sunLabel = buildSunLabel();
+
+    /* redraw canvas labels when the language changes */
+    const unsubLang = subscribeLang(() => {
+      SIGNS.forEach((sign, idx) => {
+        const vis = signVis[idx];
+        const old = vis.nameMat.map;
+        vis.nameMat.map = makeSignLabelTexture(sign.symbol, getLang() === 'en' ? sign.nameEn : sign.name);
+        vis.nameMat.needsUpdate = true;
+        old?.dispose();
+      });
+      if (sunLabel) {
+        const oldMap = (sunLabel.material as THREE.SpriteMaterial).map;
+        const tex = document.createElement('canvas');
+        tex.width = 256;
+        tex.height = 64;
+        const ctx = tex.getContext('2d');
+        if (ctx) {
+          ctx.font = '500 24px "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(252,211,77,0.95)';
+          ctx.fillText(getLang() === 'en' ? `Sun in ${sunSign.nameEn}` : `太阳此刻在 ${sunSign.name}`, 128, 34);
+        }
+        const newTex = new THREE.CanvasTexture(tex);
+        newTex.colorSpace = THREE.SRGBColorSpace;
+        (sunLabel.material as THREE.SpriteMaterial).map = newTex;
+        (sunLabel.material as THREE.SpriteMaterial).needsUpdate = true;
+        oldMap?.dispose();
+        disposables.push(newTex);
+      }
+    });
+
+    /* ------------------------------ screenshot ------------------------------ */
+    registerCapturer(() => {
+      renderer.render(scene, camera);
+      return renderer.domElement.toDataURL('image/png');
+    });
+
+    /* ------------------------------ interaction ------------------------------ */
+    const raycaster = new THREE.Raycaster();
+    raycaster.params.Points = { threshold: 7 };
+    let downX = 0;
+    let downY = 0;
+    let downT = 0;
+    let hoverIdx: number | null = null;
+    const pointer = new THREE.Vector2();
+    const pickable = [...hitPoints, ...hitSprites];
+
+    const pickSign = (ev: PointerEvent): number | null => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(pickable, false);
+      if (hits.length === 0) return null;
+      const idx = hits[0].object.userData.signIndex as number;
+      return typeof idx === 'number' ? idx : null;
+    };
+
+    let lastHoverT = 0;
+    const onPointerMove = (ev: PointerEvent) => {
+      const now = performance.now();
+      if (now - lastHoverT < 100) return;
+      lastHoverT = now;
+      hoverIdx = pickSign(ev);
+      renderer.domElement.style.cursor = hoverIdx !== null ? 'pointer' : 'grab';
+    };
+    const onPointerDown = (ev: PointerEvent) => {
+      downX = ev.clientX;
+      downY = ev.clientY;
+      downT = performance.now();
+    };
+    const onPointerUp = (ev: PointerEvent) => {
+      const moved = Math.hypot(ev.clientX - downX, ev.clientY - downY);
+      const dt = performance.now() - downT;
+      if (moved > 6 || dt > 550) return; // a drag, not a click
+      const idx = pickSign(ev);
+      if (idx === null) return;
+      cardOriginRef.current = { x: downX, y: downY };
+      openSignRef.current(idx);
+    };
+    const cancelFlight = () => {
+      signFlightRef.current = null;
+      controls.enabled = true;
+    };
+    const onPointerLeave = () => {
+      hoverIdx = null;
+      renderer.domElement.style.cursor = 'grab';
+    };
+    const el = renderer.domElement;
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointerleave', onPointerLeave);
+    el.addEventListener('pointerdown', cancelFlight);
+    el.addEventListener('wheel', cancelFlight, { passive: true });
+
+    /* ------------------------------ resize / quality ------------------------------ */
+    const onResize = () => {
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    const ro = new ResizeObserver(onResize);
+    ro.observe(wrap);
+    const unsubQuality = onRenderScaleChange(() => {
+      applyRenderScale();
+      onResize();
+    });
+
+    /* ------------------------------ loop ------------------------------ */
+    const clock = new THREE.Clock();
+    let raf = 0;
+    const fps = createFpsMeter();
+    let frame = 0;
+    let flightT = 1;
+    const flightFrom = new THREE.Vector3();
+    const flightFromTgt = new THREE.Vector3();
+    const flightTo = new THREE.Vector3();
+    const flightToTgt = new THREE.Vector3();
+
+    const animate = () => {
+      raf = requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.1);
+      frame++;
+
+      // flight tween (UI / click → loop bridge)
+      const req = signFlightRef.current;
+      if (req !== null) {
+        signFlightRef.current = null;
+        const dir = centers[req]?.clone().normalize();
+        if (dir) {
+          flightFrom.copy(camera.position);
+          flightFromTgt.copy(controls.target);
+          flightTo.copy(dir).multiplyScalar(72);
+          flightTo.y += 6;
+          flightToTgt.copy(dir).multiplyScalar(R);
+          flightT = 0;
+          controls.enabled = false;
+        }
+      }
+      if (flightT < 1) {
+        flightT = Math.min(1, flightT + dt / 1.6);
+        const s =
+          flightT < 0.5 ? 4 * flightT * flightT * flightT : 1 - Math.pow(-2 * flightT + 2, 3) / 2;
+        camera.position.lerpVectors(flightFrom, flightTo, s);
+        controls.target.lerpVectors(flightFromTgt, flightToTgt, s);
+        if (flightT >= 1) controls.enabled = true;
+      }
+
+      // hover / focus highlight lerp (DIM ↔ LIT)
+      const focusNow = focusedRef.current;
+      SIGNS.forEach((_, i) => {
+        const vis = signVis[i];
+        const lit = i === hoverIdx || i === focusNow;
+        const lineT = lit ? LIT.line : DIM.line;
+        const nameT = lit ? LIT.name : DIM.name;
+        vis.lineMat.opacity += (lineT - vis.lineMat.opacity) * 0.12;
+        vis.nameMat.opacity += (nameT - vis.nameMat.opacity) * 0.12;
+      });
+
+      // alternate-frame work: name sprite distance compensation + sun pulse
+      if (frame % 2 === 0) {
+        const camDist = camera.position.length();
+        const k = THREE.MathUtils.clamp(camDist / 120, 0.85, 1.7);
+        for (const vis of signVis) {
+          vis.nameSprite.scale.set(46 * k, 11.5 * k, 1);
+        }
+        const p = 1 + 0.08 * Math.sin(clock.elapsedTime * 2.4);
+        sunSprite.scale.set(9 * p, 9 * p, 1);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+      fps.tick();
+    };
+    animate();
+
+    /* ------------------------------ cleanup ------------------------------ */
+    return () => {
+      cancelAnimationFrame(raf);
+      fps.dispose();
+      registerCapturer(null);
+      unsubQuality();
+      unsubLang();
+      ro.disconnect();
+      el.removeEventListener('pointermove', onPointerMove);
+      el.removeEventListener('pointerdown', onPointerDown);
+      el.removeEventListener('pointerup', onPointerUp);
+      el.removeEventListener('pointerleave', onPointerLeave);
+      el.removeEventListener('pointerdown', cancelFlight);
+      el.removeEventListener('wheel', cancelFlight);
+      controls.dispose();
+      disposables.forEach((d) => d.dispose());
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
+      sunLabel = null;
+    };
+  }, []);
+
+  /* ------------------------------ render ------------------------------ */
+  const sign = selected !== null ? SIGNS[selected] : null;
+  const ElementIcon = sign ? ELEMENT_ICONS[sign.element] : null;
+
+  return (
+    <div ref={wrapRef} className="absolute inset-0" aria-label={L('十二星座场景', 'Zodiac scene')}>
+      {/* top quick-focus chips */}
+      <div className="pointer-events-auto absolute left-1/2 top-[calc(var(--ui-safe-top)+3.4rem)] z-30 flex max-w-[94vw] -translate-x-1/2 flex-wrap justify-center gap-1.5">
+        {SIGNS.map((s, i) => {
+          const active = focused === i || selected === i;
+          return (
+            <button
+              key={s.key}
+              type="button"
+              onClick={(e) => openSign(i, { x: e.clientX, y: e.clientY })}
+              aria-pressed={active}
+              className={
+                'flex min-h-[30px] items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium backdrop-blur-xl transition-all duration-300 [@media(pointer:coarse)]:min-h-[36px] ' +
+                (active
+                  ? 'border-amber-300/40 bg-amber-200/15 text-amber-100 shadow-[0_0_16px_rgba(251,191,36,0.15)]'
+                  : 'border-white/10 bg-black/40 text-zinc-300 hover:border-amber-200/30 hover:text-amber-100')
+              }
+            >
+              <span aria-hidden style={{ color: s.color }}>{s.symbol}</span>
+              {L(s.name, s.nameEn)}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* hint */}
+      <div className="pointer-events-none absolute bottom-[calc(1.1rem+var(--ui-safe-bottom))] left-1/2 z-30 w-max max-w-[92vw] -translate-x-1/2 rounded-full border border-white/10 bg-black/45 px-4 py-1.5 text-center text-[11px] tracking-wide text-zinc-400 backdrop-blur-xl">
+        {typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+          ? L('单指拖拽旋转 · 双指缩放 · 点星座查看档案并聚焦', 'One-finger orbit · pinch to zoom · tap a sign for its card')
+          : L('拖拽旋转视角 · 滚轮缩放 · 点击星座查看档案并聚焦 · 金色圆环为黄道', 'Drag to orbit · scroll to zoom · click a sign for its card · the gold ring is the ecliptic')}
+      </div>
+
+      {/* sign info card — origin-aware open/close */}
+      {sign && (
+        <div
+          ref={cardRef}
+          role="dialog"
+          aria-label={L('星座档案', 'Sign profile')}
+          className="universe-scroll absolute right-4 top-[calc(var(--ui-safe-top)+4.6rem)] z-40 max-h-[calc(100dvh-150px)] w-[min(92vw,340px)] overflow-y-auto rounded-2xl border border-white/10 bg-black/60 p-5 shadow-2xl shadow-black/50 backdrop-blur-xl portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl leading-none" style={{ color: sign.color }} aria-hidden>
+                {sign.symbol}
+              </span>
+              <div>
+                <h2 className="text-base font-semibold tracking-wider text-amber-100">
+                  {L(sign.name, sign.nameEn)}
+                </h2>
+                <p className="text-[10px] tracking-[0.3em] text-zinc-500">{sign.nameEn.toUpperCase()}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => closeSignRef.current()}
+              aria-label={L('关闭星座档案', 'Close sign profile')}
+              className="rounded-lg border border-white/10 bg-black/40 p-1.5 text-zinc-400 transition-colors duration-200 hover:border-white/25 hover:text-zinc-100"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            <span className="rounded-full border border-amber-200/25 bg-amber-200/10 px-2.5 py-0.5 text-[10px] font-medium text-amber-200">
+              {L(sign.dates, sign.datesEn)}
+            </span>
+            <span
+              className="rounded-full border px-2.5 py-0.5 text-[10px] font-medium"
+              style={{
+                borderColor: `${ELEMENT_COLOR[sign.element]}55`,
+                color: ELEMENT_COLOR[sign.element],
+                background: `${ELEMENT_COLOR[sign.element]}14`,
+              }}
+            >
+              {ElementIcon && <ElementIcon className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden />}
+              {L(ELEMENT_LABEL[sign.element][0], ELEMENT_LABEL[sign.element][1])}
+            </span>
+          </div>
+
+          <dl className="uni-anim-stagger mt-4 space-y-1.5 text-[11px]">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-1.5">
+              <dt className="text-zinc-500">{L('守护星', 'Ruling planet')}</dt>
+              <dd className="text-zinc-200">{L(sign.ruler, sign.rulerEn)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-1.5">
+              <dt className="text-zinc-500">{L('最亮星', 'Brightest star')}</dt>
+              <dd className="text-zinc-200">
+                {L(sign.brightest, sign.brightestEn)}
+                <span className="ml-1 font-mono text-amber-200/90">{sign.magnitude}</span>
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-4 text-[11.5px] leading-relaxed text-zinc-300">{L(sign.story, sign.storyEn)}</p>
+
+          <p className="mt-4 border-t border-white/5 pt-2.5 text-right text-[9px] tracking-[0.24em] text-zinc-600">
+            {L('黄道十二宫 · J2000 星表', 'ZODIAC · J2000 CATALOGUE')}
+          </p>
+        </div>
+      )}
+
+      {glError && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center">
+          <div className="rounded-2xl border border-white/10 bg-black/70 px-6 py-5 text-center backdrop-blur-xl">
+            <p className="text-sm font-semibold text-zinc-100">{L('无法启动 WebGL', 'WebGL unavailable')}</p>
+            <p className="mt-2 text-[11px] text-zinc-400">
+              {L('当前环境不支持 WebGL 渲染，请更换浏览器或开启硬件加速。', 'This environment cannot start WebGL — try another browser or enable hardware acceleration.')}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

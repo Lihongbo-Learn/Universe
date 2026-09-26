@@ -239,3 +239,29 @@
     animation: none !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Universe browser — cinematic scene-switch (zoom-through)            */
+/* Outgoing frame recedes into a point while the incoming scene grows  */
+/* ------------------------------------------------------------------ */
+
+@keyframes uni-scene-out {
+  0% { opacity: 1; transform: scale(1); filter: brightness(1); }
+  55% { opacity: 0.9; transform: scale(0.55); filter: brightness(1.35); }
+  100% { opacity: 0; transform: scale(0.04); filter: brightness(2.2); }
+}
+@keyframes uni-scene-in {
+  0% { opacity: 0; transform: scale(0.22); filter: brightness(1.6) blur(6px); }
+  40% { opacity: 1; filter: brightness(1.25) blur(1.5px); }
+  100% { opacity: 1; transform: scale(1); filter: none; }
+}
+
+.uni-scene-out { animation: uni-scene-out 0.85s cubic-bezier(0.5, 0, 0.85, 0.4) both; pointer-events: none; }
+.uni-scene-in { animation: uni-scene-in 0.95s cubic-bezier(0.18, 0.7, 0.3, 1) both; transform-origin: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .uni-scene-out,
+  .uni-scene-in {
+    animation: none !important;
+  }
+}

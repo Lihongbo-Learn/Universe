@@ -2,9 +2,9 @@
 
 # 🔭 Universe — 宇宙浏览器
 
-一个基于 **Next.js + Three.js** 的单页沉浸式宇宙探索应用。三大场景——**太阳系 / 银河系 / 黑洞**——全部使用程序化生成的材质与粒子系统，无任何外部图片素材，在浏览器中即可漫游从行星轨道到事件视界的宇宙尺度。
+一个基于 **Next.js + Three.js** 的单页沉浸式宇宙探索应用。四大场景——**太阳系 / 银河系 / 黑洞 / 十二星座**——全部使用程序化生成的材质与粒子系统，无任何外部图片素材，在浏览器中即可漫游从行星轨道到事件视界的宇宙尺度。
 
-![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/版本-v0.3-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/版本-v0.4-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
 ## 📸 截图预览
 
@@ -38,6 +38,12 @@
 - **恒星悬停档案**：空间索引加速查询，悬停显示光谱型 / 恒星类型 / 旋臂归属 / 距银心距离
 - **个人星图收藏**：点击收藏恒星（localStorage 持久化，星官命名），支持定位飞行与 JSON 导出/导入
 
+### ♈ 十二星座
+- **黄道十二宫天球浏览**：12 星座真实 J2000 星表坐标，按星等分级的恒星、连线与人马座「茶壶」等经典星象
+- **金色黄道环** + 太阳当前位置实时标记（自动计算太阳黄经，显示「太阳此刻在人马座」）
+- 点击星座：镜头聚焦飞行 + 档案卡（日期区间、四色元素、守护星、最亮星与神话故事，全双语）
+- 顶部 12 星座快切 chips，一键聚焦
+
 ### 🕳️ 黑洞
 - **自定义 Shader 吸积盘**：内薄外厚、开普勒差速旋转、fbm 流丝、温度色带、**多普勒成束**（单侧增亮偏蓝）、白热内缘——Interstellar 风格
 - **屏幕空间引力透镜后处理**：背景星场弯折、光子环、RGB 色散、爱因斯坦环辉光，可平滑开关
@@ -56,7 +62,8 @@
 - 📸 一键截图下载（含后处理效果）
 - 🖥️ 画质三档切换（高清/均衡/流畅）+ **FPS 双向自适应调档**（低帧自动降档、余量自动回升，手动选择优先）
 - 🔊 Web Audio 全合成音效：三场景差异化环境底噪 + UI 事件音，双滑杆独立音量
-- ⌨️ 快捷键：`1/2/3` 切换场景 · `M` 总静音 · `Space` 暂停太阳系 · `,` 设置
+- ⌨️ 快捷键：`1/2/3/4` 切换场景 · `M` 总静音 · `Space` 暂停太阳系 · `,` 设置
+- 🎬 **电影感场景切换**：切换时当前场景缩成一点飞走、新场景从深处生长出来（zoom-through，一镜到底）
 - 📱 移动端适配：竖屏两行头部布局、44px 触控区、刘海屏 safe-area、双指缩放
 - 左下角 FPS 徽章（点击/hover 查看渲染信息）
 

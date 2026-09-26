@@ -2,25 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import {
-  Orbit,
-  Sparkles,
-  CircleDot,
-  Rocket,
-  Loader2,
-  Camera,
-  Check,
-  Gauge,
-  Volume2,
-  VolumeX,
-  Bell,
-  BellOff,
-  SlidersHorizontal,
-  Settings,
-  Languages,
-  Keyboard,
-  X,
-} from 'lucide-react';
+import {Orbit, Sparkles, CircleDot, Rocket, Loader2, Camera, Check, Gauge, Volume2, VolumeX, Bell, BellOff, SlidersHorizontal, Settings, Languages, Keyboard, X, Star} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
 import { takeScreenshot, downloadDataUrl } from '@/components/universe/capture';
@@ -43,7 +25,7 @@ import {
   type LangMode,
 } from '@/components/universe/i18n';
 
-type SceneId = 'solar' | 'galaxy' | 'blackhole';
+type SceneId = 'solar' | 'galaxy' | 'blackhole' | 'zodiac';
 
 /** F37 — persisted preference for the UI event sounds */
 const SFX_LS_KEY = 'universe-sfx';
@@ -74,6 +56,7 @@ const SCENE_TABS: { id: SceneId; label: string; en: string; sub: string; icon: t
   { id: 'solar', label: '太阳系', en: 'Solar System', sub: 'SOLAR SYSTEM', icon: Orbit },
   { id: 'galaxy', label: '银河系', en: 'Milky Way', sub: 'MILKY WAY', icon: Sparkles },
   { id: 'blackhole', label: '黑洞', en: 'Black Hole', sub: 'BLACK HOLE', icon: CircleDot },
+  { id: 'zodiac', label: '十二星座', en: 'Zodiac', sub: 'ZODIAC', icon: Star },
 ];
 
 /** Bilingual quality labels — quality.ts keeps Chinese-only labels, the UI translates. */
@@ -103,6 +86,10 @@ const BlackHoleScene = dynamic(() => import('@/components/universe/BlackHoleScen
   ssr: false,
   loading: () => <SceneLoading />,
 });
+const ZodiacScene = dynamic(() => import('@/components/universe/ZodiacScene'), {
+  ssr: false,
+  loading: () => <SceneLoading />,
+});
 
 export default function UniverseBrowser() {
   useLang(); // re-render on language change so every L() below re-evaluates
@@ -124,6 +111,8 @@ export default function UniverseBrowser() {
   const flashTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
   /* origin-aware transitions (一镜到底): panels open from the trigger, close back into it */
+  const [exitFrame, setExitFrame] = useState<string | null>(null);
+  const transitioningRef = useRef(false);
   const [settingsClosing, setSettingsClosing] = useState(false);
   const [audioClosing, setAudioClosing] = useState(false);
   const settingsOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -234,8 +223,18 @@ export default function UniverseBrowser() {
       // reset fps readout while the next scene boots
       const v = document.getElementById('fps-value');
       if (v) v.textContent = '--';
-      if (id !== active) playEventSound('switch'); // F23 — airy swish on scene change
+      if (id === active || transitioningRef.current) return; // one journey at a time
+      playEventSound('switch'); // F23 — airy swish on scene change
+      // 一镜到底 scene travel: freeze the outgoing scene into a frame that
+      // recedes into a point while the incoming scene grows beneath it.
+      const snap = takeScreenshot();
+      transitioningRef.current = true;
+      setExitFrame(snap);
       setActive(id);
+      window.setTimeout(() => {
+        setExitFrame(null);
+        transitioningRef.current = false;
+      }, 1000);
     },
     [active]
   );
@@ -329,6 +328,7 @@ export default function UniverseBrowser() {
       if (k === '1') switchTo('solar');
       else if (k === '2') switchTo('galaxy');
       else if (k === '3') switchTo('blackhole');
+      else if (k === '4') switchTo('zodiac');
       else if (k === 'm') handleSoundToggle();
       else if (k === ',') openSettings();
     };
@@ -384,7 +384,7 @@ export default function UniverseBrowser() {
     { mode: 'en', label: 'English' },
   ];
   const shortcuts: { keys: string; desc: string }[] = [
-    { keys: '1 / 2 / 3', desc: L('切换场景', 'Switch scenes') },
+    { keys: '1 / 2 / 3 / 4', desc: L('切换场景', 'Switch scenes') },
     { keys: 'M', desc: L('静音', 'Mute') },
     { keys: 'Space', desc: L('暂停太阳系', 'Pause the solar system') },
     { keys: ',', desc: L('打开设置', 'Open settings') },
@@ -395,11 +395,18 @@ export default function UniverseBrowser() {
       {/* ---------------- 3D scene layer ---------------- */}
       <main className="absolute inset-0" aria-label={L('3D 宇宙场景', '3D universe scene')}>
         {/* key remounts the wrapper on scene switch → the fade plays exactly once per switch */}
-        <div key={active} className="uni-anim-fade-in absolute inset-0">
+        <div key={active} className="uni-scene-in absolute inset-0">
           {active === 'solar' && <SolarSystemScene />}
           {active === 'galaxy' && <GalaxyScene />}
           {active === 'blackhole' && <BlackHoleScene />}
+          {active === 'zodiac' && <ZodiacScene />}
         </div>
+        {/* frozen frame of the outgoing scene, receding into a point */}
+        {exitFrame && (
+          <div className="uni-scene-out pointer-events-none absolute inset-0 z-10">
+            <img src={exitFrame} alt="" className="h-full w-full object-cover" />
+          </div>
+        )}
       </main>
 
       {/* ---------------- top glass header ----------------
@@ -424,7 +431,7 @@ export default function UniverseBrowser() {
         {/* tabs */}
         <nav
           aria-label={L('场景切换', 'Scene switcher')}
-          className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-white/10 bg-black/45 p-1.5 shadow-lg shadow-black/40 backdrop-blur-xl portrait:order-3 portrait:w-full portrait:justify-center"
+          className="pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/45 p-1.5 shadow-lg shadow-black/40 backdrop-blur-xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden portrait:order-3 portrait:max-w-[96vw] portrait:w-full portrait:justify-center"
         >
           {SCENE_TABS.map((tab) => {
             const Icon = tab.icon;
@@ -785,7 +792,7 @@ export default function UniverseBrowser() {
             </section>
 
             <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
-              UNIVERSE · v0.3
+              UNIVERSE · v0.4
             </p>
           </div>
         </div>
