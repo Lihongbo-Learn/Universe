@@ -50,6 +50,7 @@ import { L, useLang, subscribeLang, getLang } from '@/components/universe/i18n';
 import { createFpsMeter } from '@/components/universe/fps';
 import { registerCapturer } from '@/components/universe/capture';
 import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
+import { playEnter, playExit, setOriginFromPoint } from '@/components/universe/originTransition';
 import { playEventSound } from '@/components/universe/soundscape';
 import {
   getPlanetTexture,
@@ -748,6 +749,20 @@ export default function SolarSystemScene() {
   /* F25 — constellation quick-locate flight */
   const conFlightRef = useRef<number | null>(null);
   const constellationCentersRef = useRef<THREE.Vector3[]>([]);
+  /* 一镜到底 origin-transition bookkeeping (bridges the once-registered scene
+     effect and the React card lifecycle). Cards stay mounted during their exit:
+     the clearing setState is deferred to the playExit onDone callback. */
+  const infoCardRef = useRef<HTMLElement | null>(null);
+  const conCardRef = useRef<HTMLElement | null>(null);
+  const cardOriginRef = useRef({ x: 0, y: 0 }); // viewport point the card opens from
+  const infoGenRef = useRef(0); // invalidates a pending exit when the card reopens
+  const conGenRef = useRef(0);
+  const infoExitingRef = useRef(false);
+  const conExitingRef = useRef(false);
+  const closeInfoRef = useRef<() => void>(() => {});
+  const closeConRef = useRef<() => void>(() => {});
+  const openBodyRef = useRef<(b: BodyInfo) => void>(() => {});
+  const openConRef = useRef<(idx: number) => void>(() => {});
 
   useEffect(() => {
     constellationsVisibleRef.current = showConstellations;
@@ -829,6 +844,106 @@ export default function SolarSystemScene() {
       }
     }
   }, [selected]);
+
+  /* 一镜到底 — cards stay mounted while their exit plays: the clearing setState
+     is deferred to the playExit onDone callback, so content cannot flash. */
+  const closeInfoCard = () => {
+    if (infoExitingRef.current) return; // an exit is already playing
+    const el = infoCardRef.current;
+    if (!el) {
+      setSelected(null);
+      return;
+    }
+    infoExitingRef.current = true;
+    const gen = infoGenRef.current + 1;
+    infoGenRef.current = gen;
+    playExit(el, 'uni-origin-out', () => {
+      if (infoGenRef.current !== gen) return; // reopened while closing — keep it
+      infoExitingRef.current = false;
+      setSelected(null); // unmount only after the collapse finished
+    }, 240);
+  };
+
+  const closeConCard = () => {
+    if (conExitingRef.current) return;
+    const el = conCardRef.current;
+    if (!el) {
+      setSelCon(null);
+      return;
+    }
+    conExitingRef.current = true;
+    const gen = conGenRef.current + 1;
+    conGenRef.current = gen;
+    playExit(el, 'uni-origin-out', () => {
+      if (conGenRef.current !== gen) return;
+      conExitingRef.current = false;
+      setSelCon(null);
+    }, 240);
+  };
+
+  const enterInfoCard = () => {
+    const el = infoCardRef.current;
+    if (el) {
+      setOriginFromPoint(el, cardOriginRef.current.x, cardOriginRef.current.y);
+      playEnter(el, 'uni-origin-in');
+    }
+  };
+
+  const enterConCard = () => {
+    const el = conCardRef.current;
+    if (el) {
+      setOriginFromPoint(el, cardOriginRef.current.x, cardOriginRef.current.y);
+      playEnter(el, 'uni-origin-in');
+    }
+  };
+
+  /* open helpers: cancel a still-running exit (a same-body re-click within the
+     240 ms close window would otherwise never re-fire the enter effect) */
+  const openBody = (b: BodyInfo) => {
+    closeConCard();
+    if (infoExitingRef.current) {
+      infoGenRef.current += 1; // invalidate the pending onDone
+      infoExitingRef.current = false;
+      if (selected?.id === b.id) enterInfoCard(); // effect won't refire for the same body
+    }
+    setSelected(b);
+  };
+
+  const openCon = (idx: number) => {
+    closeInfoCard();
+    if (conExitingRef.current) {
+      conGenRef.current += 1;
+      conExitingRef.current = false;
+      if (selCon === idx) enterConCard();
+    }
+    setSelCon(idx);
+    conFlightRef.current = idx;
+  };
+
+  /* enter effects: scale the freshly mounted card out of the recorded click
+     point (cardOriginRef, written by every trigger before opening) */
+  useEffect(() => {
+    if (!selected) return;
+    infoGenRef.current += 1; // invalidate any pending exit (reopen mid-close)
+    infoExitingRef.current = false;
+    enterInfoCard();
+  }, [selected]);
+
+  useEffect(() => {
+    if (selCon === null) return;
+    conGenRef.current += 1;
+    conExitingRef.current = false;
+    enterConCard();
+  }, [selCon]);
+
+  /* The scene effect registers its pointer handlers once; keep the card open/
+     close fns reachable from there via refs, refreshed on every render. */
+  useEffect(() => {
+    closeInfoRef.current = closeInfoCard;
+    closeConRef.current = closeConCard;
+    openBodyRef.current = openBody;
+    openConRef.current = openCon;
+  });
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -1618,19 +1733,26 @@ export default function SolarSystemScene() {
         // constellations take priority; body and constellation cards are mutually exclusive
         const conIdx = pickConstellation(ev);
         if (conIdx >= 0) {
-          setSelected(null);
-          setSelCon(conIdx);
+          cardOriginRef.current.x = downX; // open from the actual tap point
+          cardOriginRef.current.y = downY;
+          openConRef.current(conIdx); // old card collapses out while the new one opens
           conFlightRef.current = conIdx; // F38 — in-canvas constellation click also flies the camera there
           playEventSound('click'); // F23
           renderer.domElement.style.cursor = 'pointer';
           return;
         }
         const body = pickBody(ev);
-        setSelected(body);
-        setSelCon(null);
-        if (body) playEventSound('click'); // F23
+        if (body) {
+          cardOriginRef.current.x = downX;
+          cardOriginRef.current.y = downY;
+          openBodyRef.current(body);
+          playEventSound('click'); // F23
+        } else {
+          closeInfoRef.current();
+          closeConRef.current();
+          hideTip();
+        }
         renderer.domElement.style.cursor = body ? 'pointer' : 'grab';
-        if (!body) hideTip();
       }
     };
 
@@ -2324,9 +2446,7 @@ export default function SolarSystemScene() {
   const flyToConstellation = (idx: number) => {
     playEventSound('click');
     if (!constellationsVisibleRef.current) setShowConstellations(true); // auto-open the layer
-    setSelected(null);
-    setSelCon(idx); // open the archive card on arrival
-    conFlightRef.current = idx;
+    openCon(idx); // opens the archive card on arrival (info card collapses to its origin)
   };
 
   const speedButtons: { v: Speed; label: string; icon: typeof Play }[] = [
@@ -2358,9 +2478,9 @@ export default function SolarSystemScene() {
               labelRefs.current[i] = el;
             }}
             type="button"
-            onClick={() => {
-              setSelected(b);
-              setSelCon(null);
+            onClick={(e) => {
+              cardOriginRef.current = { x: e.clientX, y: e.clientY };
+              openBody(b);
               playEventSound('click'); // F23
             }}
             style={{ display: 'none' }}
@@ -2553,7 +2673,7 @@ export default function SolarSystemScene() {
             checked={showConstellations}
             onCheckedChange={(checked) => {
               setShowConstellations(checked);
-              if (!checked) setSelCon(null);
+              if (!checked) closeConCard();
             }}
             aria-label={L('显示星座连线', 'Show constellation lines')}
           />
@@ -2568,7 +2688,10 @@ export default function SolarSystemScene() {
               <button
                 key={c.en}
                 type="button"
-                onClick={() => flyToConstellation(i)}
+                onClick={(e) => {
+                  cardOriginRef.current = { x: e.clientX, y: e.clientY };
+                  flyToConstellation(i);
+                }}
                 title={lang === 'en' ? `Fly to ${c.nameEn} and open its card` : `飞向${c.name}并打开档案`}
                 aria-label={lang === 'en' ? `Locate ${c.nameEn}` : `定位到${c.name}`}
                 className={cn(
@@ -2630,16 +2753,12 @@ export default function SolarSystemScene() {
         </span>
       </div>
 
-      {/* ---------------- slide-in info card ---------------- */}
-      <aside
-        aria-hidden={!selected}
-        className={cn(
-          'uni-anim-slide-right absolute right-4 top-24 z-40 w-[320px] max-w-[86vw] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-500 ease-out portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto portrait:max-w-none',
-          selected ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[120%] opacity-0'
-        )}
-      >
-        {selected && (
-          <>
+      {/* ---------------- origin-scaled info card (一镜到底) ---------------- */}
+      {selected && (
+        <aside
+          ref={infoCardRef}
+          className="absolute right-4 top-24 z-40 w-[min(86vw,320px)] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto"
+        >
             <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${selected.accent}, transparent)` }} />
             <div className="universe-scroll max-h-[calc(100dvh-160px)] overflow-y-auto p-5 portrait:max-h-[calc(100dvh-220px)]">
               <div className="flex items-start justify-between gap-3">
@@ -2666,7 +2785,7 @@ export default function SolarSystemScene() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSelected(null)}
+                  onClick={closeInfoCard}
                   aria-label={L('关闭资料卡', 'Close info card')}
                   className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
                 >
@@ -2729,22 +2848,17 @@ export default function SolarSystemScene() {
                 {L('数据来源 · NASA 行星档案', 'Data source · NASA Planetary Fact Sheet')}
               </p>
             </div>
-          </>
-        )}
-      </aside>
+        </aside>
+      )}
 
-      {/* ---------------- constellation archive card (F15) ---------------- */}
-      <aside
-        aria-hidden={selCon === null}
-        className={cn(
-          'uni-anim-slide-right absolute right-4 top-24 z-40 w-[320px] max-w-[86vw] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-500 ease-out portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto portrait:max-w-none',
-          selCon !== null ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[120%] opacity-0'
-        )}
-      >
-        {selCon !== null && CONSTELLATIONS[selCon] && (() => {
-          const con = CONSTELLATIONS[selCon];
-          return (
-            <>
+      {/* ---------------- origin-scaled constellation archive card (F15, 一镜到底) ---------------- */}
+      {selCon !== null && CONSTELLATIONS[selCon] && (() => {
+        const con = CONSTELLATIONS[selCon];
+        return (
+          <aside
+            ref={conCardRef}
+            className="absolute right-4 top-24 z-40 w-[min(86vw,320px)] overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:left-3 portrait:right-3 portrait:top-[138px] portrait:w-auto"
+          >
               <div className="h-1 w-full" style={{ background: 'linear-gradient(90deg, #9db0cc, transparent)' }} />
               <div className="universe-scroll max-h-[calc(100dvh-160px)] overflow-y-auto p-5 portrait:max-h-[calc(100dvh-220px)]">
                 <div className="flex items-start justify-between gap-3">
@@ -2760,7 +2874,7 @@ export default function SolarSystemScene() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSelCon(null)}
+                    onClick={closeConCard}
                     aria-label={L('关闭星座档案卡', 'Close constellation card')}
                     className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
                   >
@@ -2804,10 +2918,9 @@ export default function SolarSystemScene() {
                   {L('星表坐标 · J2000.0 历元', 'Catalog coordinates · Epoch J2000.0')}
                 </p>
               </div>
-            </>
-          );
-        })()}
-      </aside>
+          </aside>
+        );
+      })()}
     </div>
   );
 }

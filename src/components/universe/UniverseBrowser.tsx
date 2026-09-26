@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
 import { takeScreenshot, downloadDataUrl } from '@/components/universe/capture';
 import { ambient, playEventSound } from '@/components/universe/soundscape';
+import { playEnter, playExit, setOriginFromPoint, setOriginFromTrigger } from '@/components/universe/originTransition';
 import {
   cycleQuality,
   getQualityLevel,
@@ -122,6 +123,16 @@ export default function UniverseBrowser() {
   );
   const flashTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
+  /* origin-aware transitions (一镜到底): panels open from the trigger, close back into it */
+  const [settingsClosing, setSettingsClosing] = useState(false);
+  const [audioClosing, setAudioClosing] = useState(false);
+  const settingsOverlayRef = useRef<HTMLDivElement | null>(null);
+  const settingsDialogRef = useRef<HTMLDivElement | null>(null);
+  const settingsBtnRef = useRef<HTMLButtonElement | null>(null);
+  const settingsOrigin = useRef<{ x: number; y: number } | null>(null);
+  const audioPanelRef = useRef<HTMLDivElement | null>(null);
+  const audioBtnRef = useRef<HTMLButtonElement | null>(null);
+  const audioOrigin = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(
     () => () => {
@@ -229,15 +240,77 @@ export default function UniverseBrowser() {
     [active]
   );
 
-  /* settings dialog open/close (both play the shared UI click) */
-  const openSettings = useCallback(() => {
+  /* settings dialog open/close (both play the shared UI click).
+     一镜到底: the dialog scales out of the gear button's position and
+     shrinks back into it on close — no jump cuts. */
+  const openSettings = useCallback((e?: React.MouseEvent) => {
+    // synthetic clicks report (0,0) — fall back to the trigger element in that case
+    settingsOrigin.current = e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null;
+    setSettingsClosing(false);
     setSettingsOpen(true);
     playEventSound('click');
   }, []);
   const closeSettings = useCallback(() => {
-    setSettingsOpen(false);
+    const overlay = settingsOverlayRef.current;
+    const dialog = settingsDialogRef.current;
+    if (!overlay || !dialog || settingsClosing) {
+      if (!settingsClosing) setSettingsOpen(false);
+      return;
+    }
+    setSettingsClosing(true);
     playEventSound('click');
-  }, []);
+    playExit(overlay, 'uni-fade-out', undefined, 220);
+    playExit(dialog, 'uni-origin-out', () => {
+      setSettingsOpen(false);
+      setSettingsClosing(false);
+    }, 220);
+  }, [settingsClosing]);
+
+  /* mount-time enter: collapse open from the trigger point */
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const dialog = settingsDialogRef.current;
+    const overlay = settingsOverlayRef.current;
+    if (!dialog || !overlay) return;
+    if (settingsOrigin.current) setOriginFromPoint(dialog, settingsOrigin.current.x, settingsOrigin.current.y);
+    else setOriginFromTrigger(dialog, settingsBtnRef.current);
+    playEnter(overlay, 'uni-anim-fade-in');
+    playEnter(dialog, 'uni-origin-in');
+  }, [settingsOpen]);
+
+  const toggleAudioPanel = useCallback(
+    (e?: React.MouseEvent) => {
+      if (audioPanelOpen) {
+        const panel = audioPanelRef.current;
+        if (panel && !audioClosing) {
+          setAudioClosing(true);
+          playEventSound('click');
+          playExit(panel, 'uni-origin-out', () => {
+            setAudioPanelOpen(false);
+            setAudioClosing(false);
+          }, 220);
+          return;
+        }
+        setAudioPanelOpen(false);
+        setAudioClosing(false);
+        return;
+      }
+      audioOrigin.current = e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null;
+      setAudioPanelOpen(true);
+      playEventSound('click');
+    },
+    [audioPanelOpen, audioClosing]
+  );
+
+  /* mount-time enter for the volume popover */
+  useEffect(() => {
+    if (!audioPanelOpen) return;
+    const panel = audioPanelRef.current;
+    if (!panel) return;
+    if (audioOrigin.current) setOriginFromPoint(panel, audioOrigin.current.x, audioOrigin.current.y);
+    else setOriginFromTrigger(panel, audioBtnRef.current);
+    playEnter(panel, 'uni-origin-in');
+  }, [audioPanelOpen]);
 
   /* F40 — keyboard shortcuts: 1/2/3 scenes · M master mute · Space solar pause · , settings.
      Ignored while typing in inputs or when a button/switch has focus. */
@@ -388,7 +461,7 @@ export default function UniverseBrowser() {
         </nav>
 
         {/* right cluster: sound + quality + screenshot + settings + badge */}
-        <div className="pointer-events-auto flex items-center gap-2 portrait:order-2 portrait:gap-1">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-1.5 portrait:order-2 portrait:justify-end max-[480px]:gap-1">
           <button
             type="button"
             onClick={handleSoundToggle}
@@ -396,7 +469,7 @@ export default function UniverseBrowser() {
             aria-pressed={soundOn}
             title={L('音效总开关（环境音 + UI 音）· 快捷键 M', 'Master sound switch (ambient + UI sounds) · shortcut M')}
             className={cn(
-              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
+              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11',
               soundOn
                 ? 'border-teal-300/40 bg-teal-300/15 text-teal-200 shadow-[0_0_16px_rgba(45,212,191,0.25)]'
                 : 'border-white/10 bg-black/40 text-zinc-300 hover:border-teal-200/40 hover:bg-black/60 hover:text-teal-200'
@@ -419,7 +492,7 @@ export default function UniverseBrowser() {
             aria-pressed={sfxOn}
             title={L('UI 事件音效（点击/截图反馈音，受总开关控制）', 'UI event sounds (click/screenshot feedback, gated by the master switch)')}
             className={cn(
-              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
+              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11',
               sfxOn && soundOn
                 ? 'border-teal-300/40 bg-teal-300/15 text-teal-200 shadow-[0_0_16px_rgba(45,212,191,0.25)]'
                 : 'border-white/10 bg-black/40 text-zinc-300 hover:border-teal-200/40 hover:bg-black/60 hover:text-teal-200'
@@ -439,12 +512,13 @@ export default function UniverseBrowser() {
           <div className="relative">
             <button
               type="button"
-              onClick={() => setAudioPanelOpen((v) => !v)}
+              onClick={(e) => toggleAudioPanel(e)}
               aria-label={audioPanelOpen ? L('关闭音量设置', 'Close volume settings') : L('打开音量设置', 'Open volume settings')}
               aria-expanded={audioPanelOpen}
+              ref={audioBtnRef}
               title={L('音量设置', 'Volume')}
               className={cn(
-                'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
+                'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11',
                 audioPanelOpen
                   ? 'border-teal-300/40 bg-teal-300/15 text-teal-200'
                   : 'border-white/10 bg-black/40 text-zinc-300 hover:border-teal-200/40 hover:bg-black/60 hover:text-teal-200'
@@ -458,15 +532,16 @@ export default function UniverseBrowser() {
                 type="button"
                 aria-hidden
                 tabIndex={-1}
-                onClick={() => setAudioPanelOpen(false)}
+                onClick={() => toggleAudioPanel()}
                 className="fixed inset-0 z-40 cursor-default"
               />
             )}
             {audioPanelOpen && (
               <div
+                ref={audioPanelRef}
                 role="dialog"
                 aria-label={L('音量设置', 'Volume')}
-                className="uni-anim-scale-in absolute right-0 top-11 z-50 w-[264px] rounded-2xl border border-white/10 bg-black/75 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl"
+                className="absolute right-0 top-11 z-50 w-[min(92vw,264px)] rounded-2xl border border-white/10 bg-black/75 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl"
               >
                 <p className="text-[10px] font-semibold tracking-[0.26em] text-zinc-500">{L('音量设置', 'Volume')}</p>
                 <div
@@ -525,7 +600,7 @@ export default function UniverseBrowser() {
             onClick={handleQualityCycle}
             aria-label={L('切换渲染画质（高清 / 均衡 / 流畅）', 'Cycle render quality (HD / Balanced / Smooth)')}
             title={L('渲染分辨率：高清 100% · 均衡 75% · 流畅 50%', 'Render scale: HD 100% · Balanced 75% · Smooth 50%')}
-            className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 text-zinc-300 backdrop-blur-xl transition-all duration-300 hover:border-violet-300/40 hover:bg-black/60 hover:text-violet-200 portrait:px-2 [@media(pointer:coarse)]:h-11"
+            className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 text-zinc-300 backdrop-blur-xl transition-all duration-300 hover:border-violet-300/40 hover:bg-black/60 hover:text-violet-200 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11"
           >
             <Gauge className="h-4 w-4" aria-hidden />
             <span className="hidden whitespace-nowrap text-[11px] font-medium tracking-wider lg:inline">{qualityLabel}</span>
@@ -536,7 +611,7 @@ export default function UniverseBrowser() {
             aria-label={L('截图当前场景并下载', 'Screenshot the current scene and download')}
             title={L('截图当前场景（PNG）', 'Screenshot the current scene (PNG)')}
             className={cn(
-              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
+              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11',
               shotFlash
                 ? 'border-emerald-300/40 bg-emerald-300/15 text-emerald-200 shadow-[0_0_16px_rgba(52,211,153,0.25)]'
                 : 'border-white/10 bg-black/40 text-zinc-300 hover:border-amber-200/40 hover:bg-black/60 hover:text-amber-200'
@@ -555,12 +630,13 @@ export default function UniverseBrowser() {
           {/* settings — opens the centered glass dialog */}
           <button
             type="button"
-            onClick={() => (settingsOpen ? closeSettings() : openSettings())}
+            ref={settingsBtnRef}
+            onClick={(e) => (settingsOpen ? closeSettings() : openSettings(e))}
             aria-label={settingsOpen ? L('关闭设置', 'Close settings') : L('打开设置', 'Open settings')}
             aria-expanded={settingsOpen}
             title={L('设置 · 快捷键 ,', 'Settings · shortcut ,')}
             className={cn(
-              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 [@media(pointer:coarse)]:h-11',
+              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11',
               settingsOpen
                 ? 'border-teal-300/40 bg-teal-300/15 text-teal-200'
                 : 'border-white/10 bg-black/40 text-zinc-300 hover:border-teal-200/40 hover:bg-black/60 hover:text-teal-200'
@@ -633,14 +709,16 @@ export default function UniverseBrowser() {
       {/* ---------------- settings dialog ---------------- */}
       {settingsOpen && (
         <div
-          className="uni-anim-fade-in fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          ref={settingsOverlayRef}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={closeSettings}
         >
           <div
+            ref={settingsDialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={L('设置', 'Settings')}
-            className="uni-anim-scale-in w-full max-w-md rounded-2xl border border-white/10 bg-black/75 p-5 shadow-2xl shadow-black/70 backdrop-blur-2xl"
+            className="max-h-[86dvh] w-[min(92vw,28rem)] overflow-y-auto rounded-2xl border border-white/10 bg-black/75 p-5 shadow-2xl shadow-black/70 backdrop-blur-2xl universe-scroll"
             onClick={(e) => e.stopPropagation()}
           >
             {/* dialog header */}
