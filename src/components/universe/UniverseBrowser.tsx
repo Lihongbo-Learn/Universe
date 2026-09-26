@@ -259,11 +259,11 @@ export default function UniverseBrowser() {
     }
     setSettingsClosing(true);
     playEventSound('click');
-    playExit(overlay, 'uni-fade-out', undefined, 220);
+    playExit(overlay, 'uni-fade-out', undefined, 320);
     playExit(dialog, 'uni-origin-out', () => {
       setSettingsOpen(false);
       setSettingsClosing(false);
-    }, 220);
+    }, 380);
   }, [settingsClosing]);
 
   /* mount-time enter: collapse open from the trigger point */
@@ -288,7 +288,7 @@ export default function UniverseBrowser() {
           playExit(panel, 'uni-origin-out', () => {
             setAudioPanelOpen(false);
             setAudioClosing(false);
-          }, 220);
+          }, 380);
           return;
         }
         setAudioPanelOpen(false);
@@ -783,6 +783,10 @@ export default function UniverseBrowser() {
                 ))}
               </ul>
             </section>
+
+            <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
+              UNIVERSE · v0.3
+            </p>
           </div>
         </div>
       )}
