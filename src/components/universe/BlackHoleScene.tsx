@@ -33,7 +33,7 @@ import { playEnter, playExit, setOriginFromPoint, setOriginFromTrigger } from '.
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
-import { AlertTriangle, Cpu, Gauge, Layers, Orbit, Sparkles, Zap, Info, CircleDot, Timer, Hourglass, Eye, Globe, Wind, Rocket, Play, Pause, Waypoints, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, Cpu, Gauge, Layers, Orbit, Sparkles, Zap, Info, CircleDot, Timer, Hourglass, Eye, Globe, Wind, Rocket, Play, Pause, Waypoints, PanelBottomClose, PanelBottomOpen, type LucideIcon } from 'lucide-react';
 
 const DISK_R_IN = 2.7;
 const DISK_R_OUT = 15;
@@ -375,6 +375,29 @@ export default function BlackHoleScene() {
   const lightLegendRef = useRef<HTMLDivElement>(null);
   const lightBtnRef = useRef<HTMLButtonElement>(null);
 
+  // Collapsible bottom control bar — state persists across sessions so small
+  // screens can keep the full scene visible. Purely UI-level: the 3D demos
+  // (slingshot / light rays) keep running via their refs while collapsed.
+  const [panelCollapsed, setPanelCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('universe-panel-blackhole') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const barRef = useRef<HTMLDivElement>(null);
+  const panelFabRef = useRef<HTMLButtonElement>(null);
+  const panelPointRef = useRef<{ x: number; y: number } | null>(null);
+  const justExpandedRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('universe-panel-blackhole', panelCollapsed ? '1' : '0');
+    } catch {
+      /* storage unavailable — the collapse state just won't persist */
+    }
+  }, [panelCollapsed]);
+
   useEffect(() => {
     slingshotEnabledRef.current = slingshotOn;
   }, [slingshotOn]);
@@ -438,6 +461,71 @@ export default function BlackHoleScene() {
     else setOriginFromTrigger(card, scienceBtnRef.current);
     playEnter(card, 'uni-origin-in');
   }, [showScience, scienceClosing]);
+
+  /* ---------------- collapsible control bar (one-shot origin transitions) ---------------- */
+
+  const handleExpandPanel = () => {
+    playEventSound('click'); // F23
+    const expand = () => {
+      justExpandedRef.current = true;
+      setPanelCollapsed(false);
+    };
+    // The floating button shrinks away first, then the bar grows out of its spot.
+    const fab = panelFabRef.current;
+    if (fab) playExit(fab, 'uni-origin-out', expand, 240);
+    else expand();
+  };
+
+  const handleCollapsePanel = (e: ReactMouseEvent<HTMLButtonElement>) => {
+    playEventSound('click'); // F23
+    panelPointRef.current = { x: e.clientX, y: e.clientY };
+    const collapseNow = () => {
+      const bar = barRef.current;
+      if (!bar) {
+        setPanelCollapsed(true);
+        return;
+      }
+      playExit(bar, 'uni-origin-out', () => setPanelCollapsed(true), 240);
+    };
+    // If the science card is open, let it finish its own exit first so it never
+    // gets cut off by the bar unmounting (it is rendered inside the bar).
+    const card = scienceCardRef.current;
+    if (showScience && !scienceClosing && card) {
+      const seq = ++scienceExitSeqRef.current;
+      setScienceClosing(true);
+      playExit(card, 'uni-origin-out', () => {
+        if (scienceExitSeqRef.current !== seq) return; // re-opened mid-exit → keep the card alive
+        setShowScience(false);
+        setScienceClosing(false);
+        collapseNow();
+      }, 240);
+    } else {
+      collapseNow();
+    }
+  };
+
+  // Floating button unfolds from the point where the bar was collapsed.
+  useEffect(() => {
+    if (!panelCollapsed) return;
+    const fab = panelFabRef.current;
+    if (!fab) return;
+    const pt = panelPointRef.current;
+    if (pt) setOriginFromPoint(fab, pt.x, pt.y);
+    playEnter(fab, 'uni-origin-in');
+  }, [panelCollapsed]);
+
+  // After expanding from the floating button, the bar grows out of its spot;
+  // on the very first page load it keeps its original uni-anim-fade-up entrance.
+  useEffect(() => {
+    if (panelCollapsed || !justExpandedRef.current) return;
+    const bar = barRef.current;
+    if (!bar) return;
+    justExpandedRef.current = false;
+    bar.classList.remove('uni-anim-fade-up'); // avoid stacking with uni-origin-in
+    const pt = panelPointRef.current;
+    if (pt) setOriginFromPoint(bar, pt.x, pt.y);
+    playEnter(bar, 'uni-origin-in');
+  }, [panelCollapsed]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -1107,7 +1195,8 @@ export default function BlackHoleScene() {
               </div>
             )}
             <p className="text-center text-[10px] tracking-wide text-zinc-500"><span className="[@media(pointer:coarse)]:hidden">{L('拖拽环绕 · 滚轮缩放（可中断飞行）· 左侧切换预设视角 · 侧倾观察光弧与背景弯折', 'Drag to orbit · scroll to zoom (interrupts flights) · switch presets on the left · tilt to see the light arcs and background bending')}</span><span className="hidden [@media(pointer:coarse)]:inline">{L('单指拖拽环绕 · 双指缩放 · 左侧切换预设视角', 'One-finger drag to orbit · pinch to zoom · switch presets on the left')}</span></p>
-            <div className="uni-anim-fade-up pointer-events-auto relative flex max-w-[94vw] flex-wrap items-center justify-center gap-4 rounded-2xl border border-white/10 bg-black/45 px-5 py-3 shadow-lg shadow-black/40 backdrop-blur-xl portrait:gap-x-3 portrait:gap-y-2 portrait:px-3 portrait:py-2.5 sm:gap-6">
+            {!panelCollapsed && (
+            <div ref={barRef} className="uni-anim-fade-up pointer-events-auto relative flex max-w-[94vw] flex-wrap items-center justify-center gap-4 rounded-2xl border border-white/10 bg-black/45 px-5 py-3 shadow-lg shadow-black/40 backdrop-blur-xl portrait:gap-x-3 portrait:gap-y-2 portrait:px-3 portrait:py-2.5 sm:gap-6">
               <div className="flex items-center gap-2.5">
                 <Orbit className="h-3.5 w-3.5 text-amber-300/80" aria-hidden />
                 <Switch checked={lensOn} onCheckedChange={handleLensChange} aria-label={L('切换引力透镜', 'Toggle gravitational lensing')} className="cursor-pointer data-[state=checked]:bg-amber-400" />
@@ -1204,6 +1293,16 @@ export default function BlackHoleScene() {
                 <Info className="h-3.5 w-3.5" aria-hidden />
                 {L('科学注释', 'Science notes')}
               </button>
+              <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
+              <button
+                type="button"
+                onClick={handleCollapsePanel}
+                aria-label={L('收起控制条', 'Collapse controls')}
+                title={L('收起控制条', 'Collapse controls')}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-zinc-300 transition-all duration-200 hover:border-amber-200/40 hover:text-amber-200"
+              >
+                <PanelBottomClose className="h-3.5 w-3.5" aria-hidden />
+              </button>
 
               {/* -------- science annotation card (F8) -------- */}
               {showScience && (
@@ -1256,7 +1355,26 @@ export default function BlackHoleScene() {
                 </div>
               )}
             </div>
+            )}
           </div>
+
+          {/* ---------------- collapsed-state floating button ---------------- */}
+          {panelCollapsed && (
+            <div className="pointer-events-none absolute bottom-[calc(1rem+var(--ui-safe-bottom))] left-1/2 z-20 -translate-x-1/2">
+              {/* outer wrapper owns the centering translate so the enter/exit
+                  transform animation on the button is never overwritten */}
+              <button
+                ref={panelFabRef}
+                type="button"
+                onClick={handleExpandPanel}
+                aria-label={L('展开控制条', 'Show controls')}
+                title={L('展开控制条', 'Show controls')}
+                className="uni-origin-in pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/45 text-zinc-300 shadow-lg shadow-black/40 backdrop-blur-xl transition-colors duration-200 hover:border-amber-200/40 hover:text-amber-200"
+              >
+                <PanelBottomOpen className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
