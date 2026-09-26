@@ -26,6 +26,8 @@ import {
   Zap,
   History,
   Radio,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
@@ -716,6 +718,16 @@ export default function SolarSystemScene() {
   const [showMeteors, setShowMeteors] = useState(true); // F22 — Orionid meteor shower
   const [selected, setSelected] = useState<BodyInfo | null>(null);
   const [selCon, setSelCon] = useState<number | null>(null);
+  /* panel collapse (小屏折叠): remembered across visits via localStorage */
+  const [panelCollapsed, setPanelCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('universe-panel-solar') === '1';
+    } catch {
+      return false;
+    }
+  });
+  /* keeps the collapsed fab mounted while its uni-origin-out shrink plays */
+  const [fabLeaving, setFabLeaving] = useState(false);
 
   const speedRef = useRef<Speed>(1);
   const liveLockRef = useRef(false); // F36
@@ -763,6 +775,14 @@ export default function SolarSystemScene() {
   const closeConRef = useRef<() => void>(() => {});
   const openBodyRef = useRef<(b: BodyInfo) => void>(() => {});
   const openConRef = useRef<(idx: number) => void>(() => {});
+  /* panel collapse — 一镜到底 handoff bookkeeping */
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelFabRef = useRef<HTMLButtonElement>(null);
+  const panelToggleOriginRef = useRef({ x: 0, y: 0 }); // last collapse/expand click point
+  const justExpandedRef = useRef(false); // next panel mount should grow out of the fab
+  const panelSlidePlayedRef = useRef(false); // uni-anim-slide-left only on the first page load
+  const panelExitingRef = useRef(false);
+  const fabExitingRef = useRef(false);
 
   useEffect(() => {
     constellationsVisibleRef.current = showConstellations;
@@ -944,6 +964,86 @@ export default function SolarSystemScene() {
     openBodyRef.current = openBody;
     openConRef.current = openCon;
   });
+
+  /* -------- panel collapse / expand (一镜到底) -------- */
+  const collapsePanel = (x: number, y: number) => {
+    if (panelExitingRef.current) return; // a collapse is already playing
+    panelExitingRef.current = true;
+    panelToggleOriginRef.current = { x, y };
+    try {
+      localStorage.setItem('universe-panel-solar', '1');
+    } catch {
+      /* storage unavailable — collapse still works for this session */
+    }
+    playEventSound('click');
+    const el = panelRef.current;
+    if (!el) {
+      panelExitingRef.current = false;
+      setPanelCollapsed(true);
+      return;
+    }
+    playExit(el, 'uni-origin-out', () => {
+      panelExitingRef.current = false;
+      setPanelCollapsed(true); // unmount only after the shrink finished
+    }, 240);
+  };
+
+  const expandPanel = (x: number, y: number) => {
+    if (fabExitingRef.current) return; // the fab shrink is still playing
+    fabExitingRef.current = true;
+    panelToggleOriginRef.current = { x, y };
+    justExpandedRef.current = true;
+    try {
+      localStorage.setItem('universe-panel-solar', '0');
+    } catch {
+      /* ignore */
+    }
+    playEventSound('click');
+    setFabLeaving(true); // keep the fab mounted while it shrinks into the point
+    setPanelCollapsed(false); // panel mounts now and grows out of the same point
+    const fab = panelFabRef.current;
+    if (!fab) {
+      fabExitingRef.current = false;
+      setFabLeaving(false);
+      return;
+    }
+    setOriginFromPoint(fab, x, y);
+    playExit(fab, 'uni-origin-out', () => {
+      fabExitingRef.current = false;
+      setFabLeaving(false); // unmount the fab only after its shrink finished
+    }, 240);
+  };
+
+  /* fab enter: grow out of the recorded collapse click point */
+  useEffect(() => {
+    if (!panelCollapsed) return;
+    const el = panelFabRef.current;
+    if (!el) return;
+    const { x, y } = panelToggleOriginRef.current;
+    if (x === 0 && y === 0) return; // page loaded collapsed — no handoff point
+    setOriginFromPoint(el, x, y);
+    playEnter(el, 'uni-origin-in');
+  }, [panelCollapsed]);
+
+  /* panel enter: expand-from-fab grows out of the fab point; the very first
+     page load keeps the original uni-anim-slide-left (applied imperatively so
+     React never overwrites the animation classes mid-exit). */
+  useEffect(() => {
+    if (panelCollapsed) return;
+    const el = panelRef.current;
+    if (!el) return;
+    if (justExpandedRef.current) {
+      justExpandedRef.current = false;
+      const { x, y } = panelToggleOriginRef.current;
+      setOriginFromPoint(el, x, y);
+      playEnter(el, 'uni-origin-in');
+      return;
+    }
+    if (!panelSlidePlayedRef.current) {
+      panelSlidePlayedRef.current = true;
+      el.classList.add('uni-anim-slide-left');
+    }
+  }, [panelCollapsed]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -2493,7 +2593,22 @@ export default function SolarSystemScene() {
       </div>
 
       {/* ---------------- bottom-left control panel ---------------- */}
-      <div className="universe-scroll uni-anim-slide-left absolute bottom-[calc(5rem+var(--ui-safe-bottom))] left-4 z-30 max-h-[calc(100dvh-140px)] w-60 overflow-y-auto rounded-2xl border border-white/10 bg-black/45 p-4 shadow-xl shadow-black/40 backdrop-blur-xl portrait:left-3 portrait:max-h-[calc(100dvh-200px)]">
+      <div ref={panelRef} className="universe-scroll absolute bottom-[calc(5rem+var(--ui-safe-bottom))] left-4 z-30 max-h-[calc(100dvh-140px)] w-60 overflow-y-auto rounded-2xl border border-white/10 bg-black/45 p-4 shadow-xl shadow-black/40 backdrop-blur-xl portrait:left-3 portrait:max-h-[calc(100dvh-200px)]">
+        {/* panel header — collapse into a floating orb (small screens) */}
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.18em] text-zinc-500">
+            <OrbitIcon className="h-3 w-3" aria-hidden /> {L('太阳系控制台', 'Solar system controls')}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => collapsePanel(e.clientX, e.clientY)}
+            aria-label={L('收起控制面板', 'Collapse controls')}
+            title={L('收起控制面板', 'Collapse controls')}
+            className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
+          >
+            <PanelLeftClose className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
         {/* F26 — simulated calendar / ephemeris */}
         <div className="mb-4 border-b border-white/5 pb-3">
           <div className="mb-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.18em] text-zinc-500">
@@ -2734,6 +2849,20 @@ export default function SolarSystemScene() {
           {L('零星背景流星 · 等待地球抵达节点', 'Sporadic meteors · waiting for Earth to reach the node')}
         </p>
       </div>
+
+      {/* collapsed-state floating orb — expands the panel back out (一镜到底) */}
+      {(panelCollapsed || fabLeaving) && (
+        <button
+          ref={panelFabRef}
+          type="button"
+          onClick={(e) => expandPanel(e.clientX, e.clientY)}
+          aria-label={L('展开控制面板', 'Show controls')}
+          title={L('展开控制面板', 'Show controls')}
+          className="absolute bottom-[calc(5rem+var(--ui-safe-bottom))] left-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/45 text-zinc-300 shadow-xl shadow-black/40 backdrop-blur-xl transition-colors hover:border-amber-200/40 hover:text-amber-200 portrait:left-3 [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px]"
+        >
+          <PanelLeftOpen className="h-5 w-5" aria-hidden />
+        </button>
+      )}
 
       {/* ---------------- bottom-center hint (F44: touch hint on portrait/coarse) ---------------- */}
       <div className="pointer-events-none absolute bottom-[calc(1rem+var(--ui-safe-bottom))] left-1/2 z-30 hidden -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-4 py-1.5 text-[11px] tracking-wide text-zinc-400 backdrop-blur-xl portrait:flex portrait:bottom-[calc(3.75rem+var(--ui-safe-bottom))] portrait:w-max portrait:max-w-[94vw] portrait:flex-col portrait:items-center portrait:gap-1 portrait:rounded-2xl portrait:px-3.5 portrait:py-2 portrait:text-center sm:flex">

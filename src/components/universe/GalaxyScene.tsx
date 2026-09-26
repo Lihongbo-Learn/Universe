@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Play, Square, Sparkles, Orbit, Zap, MapPin, BookOpen, X, Star, Trash2, Crosshair, Download, Upload, Telescope, Users, Hourglass, CircleDot, Ruler, Scale, Sun, GitMerge } from 'lucide-react';
+import { Play, Square, Sparkles, Orbit, Zap, MapPin, BookOpen, X, Star, Trash2, Crosshair, Download, Upload, Telescope, Users, Hourglass, CircleDot, Ruler, Scale, Sun, GitMerge, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { createFpsMeter } from '@/components/universe/fps';
 import { registerCapturer } from '@/components/universe/capture';
 import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
@@ -247,6 +247,8 @@ const STAR_NAMES = ['天枢', '天璇', '天玑', '天权', '玉衡', '开阳', 
 const STAR_NAMES_EN = ['Dubhe', 'Merak', 'Phecda', 'Megrez', 'Alioth', 'Mizar', 'Alkaid', 'Sirius', 'Vega', 'Altair', 'Deneb', 'Polaris'];
 const BOOKMARK_LIMIT = 12;
 const BOOKMARK_LS_KEY = 'universe-star-bookmarks';
+/* collapsible stats card — remembers its collapsed state across visits */
+const PANEL_COLLAPSED_LS_KEY = 'universe-panel-galaxy';
 
 const loadBookmarks = (): StarBookmark[] => {
   try {
@@ -458,6 +460,91 @@ export default function GalaxyScene() {
     const el = cardRefs.current.galaxy;
     if (el) playCardEnter(el, cardTriggerRef.current.galaxy);
   }, [galaxyCardOpen]);
+
+  /* ---- collapsible stats card (right-top MILKY WAY card) ---- */
+  const [panelCollapsed, setPanelCollapsed] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(PANEL_COLLAPSED_LS_KEY) === '1';
+    } catch {
+      return false; // SSR / private mode
+    }
+  });
+  const [fabExiting, setFabExiting] = useState(false); // keeps the FAB mounted while it plays its exit
+  const [statsFromFab, setStatsFromFab] = useState(false); // suppresses uni-anim-fade-up when expanding from the FAB
+  const statsRef = useRef<HTMLDivElement | null>(null);
+  const statsFabRef = useRef<HTMLButtonElement | null>(null);
+  const statsCollapseBtnRef = useRef<HTMLButtonElement | null>(null);
+  /* viewport anchor point for the 一镜到底 choreography (collapse button ↔ FAB) */
+  const statsAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const statsFromFabRef = useRef(false); // next stats-card mount should play uni-origin-in from the FAB
+  const fabEnterPendingRef = useRef(false); // next FAB mount should play uni-origin-in from the collapse point
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PANEL_COLLAPSED_LS_KEY, panelCollapsed ? '1' : '0');
+    } catch {
+      /* private mode etc. */
+    }
+  }, [panelCollapsed]);
+
+  /** The FAB mounts right after the card collapsed into the button — replay its origin-in. */
+  useIsoLayoutEffect(() => {
+    if (panelCollapsed && fabEnterPendingRef.current) {
+      fabEnterPendingRef.current = false;
+      const fab = statsFabRef.current;
+      const p = statsAnchorRef.current;
+      if (fab && p) {
+        setOriginFromPoint(fab, p.x, p.y);
+        playEnter(fab, 'uni-origin-in');
+      }
+    }
+  }, [panelCollapsed]);
+
+  /** The stats card mounts from the FAB point (一镜到底); first load keeps uni-anim-fade-up. */
+  useIsoLayoutEffect(() => {
+    if (!panelCollapsed && statsFromFabRef.current) {
+      statsFromFabRef.current = false;
+      const el = statsRef.current;
+      const p = statsAnchorRef.current;
+      if (el && p) {
+        setOriginFromPoint(el, p.x, p.y);
+        playEnter(el, 'uni-origin-in');
+      }
+    }
+  }, [panelCollapsed]);
+
+  /** Collapse: any open dossier card closes in parallel, then the card shrinks into the header button. */
+  const handleCollapseStats = useCallback(() => {
+    const btn = statsCollapseBtnRef.current;
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      statsAnchorRef.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    (['bookmark', 'arm', 'galaxy'] as const).forEach((k) => closeCard(k)); // no-op when nothing is open
+    playEventSound('click');
+    fabEnterPendingRef.current = true;
+    const el = statsRef.current;
+    if (!el) {
+      setPanelCollapsed(true);
+      return;
+    }
+    playExit(el, 'uni-origin-out', () => setPanelCollapsed(true), 240);
+  }, [closeCard]);
+
+  /** Expand: the FAB shrinks away while the card grows out of the same point. */
+  const handleExpandStats = useCallback(() => {
+    const fab = statsFabRef.current;
+    if (fab) {
+      const r = fab.getBoundingClientRect();
+      statsAnchorRef.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      setFabExiting(true);
+      playExit(fab, 'uni-origin-out', () => setFabExiting(false), 240);
+    }
+    playEventSound('click');
+    statsFromFabRef.current = true;
+    setStatsFromFab(true);
+    setPanelCollapsed(false);
+  }, []);
 
   const flashBmMsg = useCallback((text: string) => {
     setBmMsg(text);
@@ -1373,9 +1460,28 @@ export default function GalaxyScene() {
         </div>
       ) : (
         <>
-          {/* top-right stats card */}
-          <div className="uni-anim-fade-up absolute right-4 top-20 z-20 w-[190px] rounded-2xl border border-white/10 bg-black/45 p-3 backdrop-blur-xl portrait:right-3 portrait:top-[138px]">
-            <p className="text-[10px] font-semibold tracking-[0.28em] text-zinc-500">MILKY WAY</p>
+          {/* top-right stats card (collapsible) */}
+          {!panelCollapsed && (
+            <div
+              ref={statsRef}
+              className={cn(
+                'absolute right-4 top-20 z-20 w-[190px] rounded-2xl border border-white/10 bg-black/45 p-3 backdrop-blur-xl portrait:right-3 portrait:top-[138px]',
+                !statsFromFab && 'uni-anim-fade-up'
+              )}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-[10px] font-semibold tracking-[0.28em] text-zinc-500">MILKY WAY</p>
+                <button
+                  ref={statsCollapseBtnRef}
+                  type="button"
+                  onClick={handleCollapseStats}
+                  aria-label={L('收起统计卡', 'Collapse stats')}
+                  title={L('收起统计卡', 'Collapse stats')}
+                  className="-mr-1 rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+                >
+                  <PanelRightClose className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </div>
             <div className="mt-2 space-y-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
@@ -1462,7 +1568,22 @@ export default function GalaxyScene() {
               <Star className="h-3.5 w-3.5" aria-hidden />
               {L(`星图收藏（${bookmarks.length}）`, `Star Bookmarks (${bookmarks.length})`)}
             </button>
-          </div>
+            </div>
+          )}
+
+          {/* collapsed stats FAB — the card grows back out of this point on click */}
+          {(panelCollapsed || fabExiting) && (
+            <button
+              ref={statsFabRef}
+              type="button"
+              onClick={handleExpandStats}
+              aria-label={L('展开统计卡', 'Show stats')}
+              title={L('展开统计卡', 'Show stats')}
+              className="absolute right-4 top-20 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/45 text-zinc-300 shadow-lg shadow-black/50 backdrop-blur-xl transition-colors hover:border-white/25 hover:text-zinc-100 portrait:right-3"
+            >
+              <PanelRightOpen className="h-4 w-4" aria-hidden />
+            </button>
+          )}
 
           {/* Sun marker DOM label (F7) */}
           <div
