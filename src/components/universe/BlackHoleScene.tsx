@@ -9,7 +9,7 @@
  * Fully procedural — no external image assets.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -29,6 +29,7 @@ import { createLensingPass } from './lensingPass';
 import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
 import { playEventSound } from '@/components/universe/soundscape';
 import { L, useLang } from './i18n';
+import { playEnter, playExit, setOriginFromPoint, setOriginFromTrigger } from './originTransition';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -359,10 +360,20 @@ export default function BlackHoleScene() {
   const [slingshotOn, setSlingshotOn] = useState(true);
   const [failed, setFailed] = useState(false);
   const [showScience, setShowScience] = useState(false);
+  // Origin-aware open/close for the science card: keep it mounted until the exit finishes.
+  const [scienceClosing, setScienceClosing] = useState(false);
+  const scienceCardRef = useRef<HTMLDivElement>(null);
+  const scienceBtnRef = useRef<HTMLButtonElement>(null);
+  const sciencePointRef = useRef<{ x: number; y: number } | null>(null);
+  const scienceExitSeqRef = useRef(0);
   const [timeDilationR, setTimeDilationR] = useState(3); // F16 — distance in Rs units
   // F42 — light-ray geodesic demo
   const lightDemoRef = useRef(false);
   const [lightDemoOn, setLightDemoOn] = useState(false);
+  // Origin-aware show/hide for the light-ray legend row (origin = its trigger button).
+  const [lightLegendClosing, setLightLegendClosing] = useState(false);
+  const lightLegendRef = useRef<HTMLDivElement>(null);
+  const lightBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     slingshotEnabledRef.current = slingshotOn;
@@ -372,8 +383,61 @@ export default function BlackHoleScene() {
     const next = !lightDemoRef.current;
     lightDemoRef.current = next;
     setLightDemoOn(next);
+    if (!next) {
+      // collapse the legend back into its trigger button before unmounting it
+      const legend = lightLegendRef.current;
+      if (legend) {
+        setLightLegendClosing(true);
+        playExit(legend, 'uni-origin-out', () => setLightLegendClosing(false), 240);
+      }
+    }
     playEventSound('click'); // F23
   };
+
+  // Legend grows out of the light-demo button; replayed also when re-opened mid-exit.
+  useEffect(() => {
+    if (!lightDemoOn) return;
+    const legend = lightLegendRef.current;
+    if (!legend) return;
+    setLightLegendClosing(false);
+    setOriginFromTrigger(legend, lightBtnRef.current);
+    playEnter(legend, 'uni-origin-in');
+  }, [lightDemoOn]);
+
+  const handleScienceToggle = (e: ReactMouseEvent<HTMLButtonElement>) => {
+    playEventSound('click'); // F23
+    if (showScience) {
+      const card = scienceCardRef.current;
+      if (!card) {
+        setShowScience(false);
+        setScienceClosing(false);
+        return;
+      }
+      const seq = ++scienceExitSeqRef.current; // invalidated if re-opened mid-exit
+      setScienceClosing(true);
+      playExit(card, 'uni-origin-out', () => {
+        if (scienceExitSeqRef.current !== seq) return;
+        setShowScience(false);
+        setScienceClosing(false);
+      }, 240);
+    } else {
+      scienceExitSeqRef.current++; // invalidate any pending exit callback
+      sciencePointRef.current = { x: e.clientX, y: e.clientY };
+      setScienceClosing(false); // re-opening mid-exit replays the enter via the effect
+      setShowScience(true);
+    }
+  };
+
+  // Science card unfolds from the clicked point; runs on mount and on re-open mid-exit.
+  useEffect(() => {
+    if (!showScience || scienceClosing) return;
+    const card = scienceCardRef.current;
+    if (!card) return;
+    const pt = sciencePointRef.current;
+    if (pt) setOriginFromPoint(card, pt.x, pt.y);
+    else setOriginFromTrigger(card, scienceBtnRef.current);
+    playEnter(card, 'uni-origin-in');
+  }, [showScience, scienceClosing]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -1020,9 +1084,10 @@ export default function BlackHoleScene() {
 
           {/* ---------------- bottom-center hint + control bar ---------------- */}
           <div className="pointer-events-none absolute inset-x-0 bottom-5 z-20 flex flex-col items-center gap-2.5 px-4 portrait:bottom-[calc(1.25rem+var(--ui-safe-bottom))]">
-            {lightDemoOn && (
+            {(lightDemoOn || lightLegendClosing) && (
               <div
-                className="uni-anim-fade-in flex max-w-[94vw] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-black/50 px-3.5 py-1.5 shadow-lg shadow-black/40 backdrop-blur-xl"
+                ref={lightLegendRef}
+                className="uni-origin-in flex max-w-[94vw] flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-black/50 px-3.5 py-1.5 shadow-lg shadow-black/40 backdrop-blur-xl"
                 role="status"
                 aria-label={L('光线测地线图例', 'Light-ray geodesic legend')}
               >
@@ -1109,6 +1174,7 @@ export default function BlackHoleScene() {
               <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
               <button
                 type="button"
+                ref={lightBtnRef}
                 onClick={handleLightDemo}
                 aria-pressed={lightDemoOn}
                 title={L('光子测地线演示：四束不同瞄准距离 b 的光线掠过黑洞——被弯折、绕行光子球或俘获坠入视界（时间流速随吸积盘速度滑杆联动）', 'Photon geodesic demo: four rays with different impact parameters b pass the hole — bent, orbiting the photon sphere, or captured through the horizon (time flow is coupled to the accretion-disk speed slider)')}
@@ -1125,14 +1191,12 @@ export default function BlackHoleScene() {
               <div className="h-5 w-px bg-white/10 portrait:hidden" aria-hidden />
               <button
                 type="button"
-                onClick={() => {
-                  setShowScience((v) => !v);
-                  playEventSound('click'); // F23
-                }}
-                aria-pressed={showScience}
+                ref={scienceBtnRef}
+                onClick={handleScienceToggle}
+                aria-pressed={showScience && !scienceClosing}
                 className={cn(
                   'flex min-h-[32px] items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all duration-200',
-                  showScience
+                  showScience && !scienceClosing
                     ? 'bg-amber-300/20 text-amber-200 shadow-[inset_0_0_0_1px_rgba(252,211,77,0.4)]'
                     : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
                 )}
@@ -1143,7 +1207,7 @@ export default function BlackHoleScene() {
 
               {/* -------- science annotation card (F8) -------- */}
               {showScience && (
-                <div className="uni-anim-scale-in universe-scroll absolute bottom-full left-1/2 mb-3 max-h-[calc(100dvh-130px)] w-[330px] max-w-[86vw] -translate-x-1/2 overflow-y-auto rounded-2xl border border-white/10 bg-black/65 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:left-3 portrait:right-3 portrait:w-auto portrait:max-w-none portrait:translate-x-0">
+                <div ref={scienceCardRef} className="uni-origin-in universe-scroll absolute bottom-full left-1/2 mb-3 max-h-[calc(100dvh-130px)] w-[330px] max-w-[86vw] -translate-x-1/2 overflow-y-auto rounded-2xl border border-white/10 bg-black/65 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl landscape:max-w-[min(92vw,330px)] portrait:left-3 portrait:right-3 portrait:w-auto portrait:max-w-none portrait:translate-x-0">
                   <p className="text-[10px] font-semibold tracking-[0.28em] text-amber-200/70">SCIENCE NOTES</p>
                   <div className="uni-anim-stagger mt-3 space-y-2.5">
                     {[

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Play, Square, Sparkles, Orbit, Zap, MapPin, BookOpen, X, Star, Trash2, Crosshair, Download, Upload, Telescope, Users, Hourglass, CircleDot, Ruler, Scale, Sun, GitMerge } from 'lucide-react';
@@ -11,6 +11,7 @@ import { playEventSound } from '@/components/universe/soundscape';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { L, useLang, getLang } from './i18n';
+import { playEnter, playExit, setOriginFromPoint, setOriginFromTrigger } from './originTransition';
 import {
   STAR_VERTEX,
   STAR_FRAGMENT,
@@ -316,6 +317,24 @@ const parseBookmark = (raw: unknown): StarBookmark | null => {
 const fmtWanToLy = (wan: number): string => `${Math.round(wan * 10000).toLocaleString('en-US')} ly`;
 
 /* ------------------------------------------------------------------ */
+/* 一镜到底 — origin-aware open/close for the three dossier cards      */
+/* ------------------------------------------------------------------ */
+
+type CardKey = 'bookmark' | 'arm' | 'galaxy';
+/** Either the trigger element itself, or the viewport point of a click (arm chips). */
+type CardTrigger = HTMLElement | { x: number; y: number } | null;
+
+/** useLayoutEffect on the client (no SSR warning); useEffect on the server. */
+const useIsoLayoutEffect: typeof useLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+/** Set the expand origin toward the stored trigger, then replay the enter animation. */
+function playCardEnter(el: HTMLElement, trigger: CardTrigger): void {
+  if (trigger instanceof HTMLElement) setOriginFromTrigger(el, trigger);
+  else if (trigger) setOriginFromPoint(el, trigger.x, trigger.y);
+  playEnter(el, 'uni-origin-in');
+}
+
+/* ------------------------------------------------------------------ */
 /* Component                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -348,6 +367,97 @@ export default function GalaxyScene() {
   /* F34 — export/import feedback line */
   const [bmMsg, setBmMsg] = useState<string | null>(null);
   const bmMsgTimer = useRef<number | null>(null);
+
+  /* 一镜到底 — plumbing for the three dossier cards: keep each card mounted
+     while it plays its exit animation, then unmount it for real. */
+  const cardRefs = useRef<Record<CardKey, HTMLDivElement | null>>({ bookmark: null, arm: null, galaxy: null });
+  const cardTriggerRef = useRef<Record<CardKey, CardTrigger>>({ bookmark: null, arm: null, galaxy: null });
+  const cardOpenRef = useRef<Record<CardKey, boolean>>({ bookmark: false, arm: false, galaxy: false });
+  const cardClosingRef = useRef<Record<CardKey, boolean>>({ bookmark: false, arm: false, galaxy: false });
+  const cardCloseEpochRef = useRef<Record<CardKey, number>>({ bookmark: 0, arm: 0, galaxy: 0 });
+
+  const setOpenCard = useCallback((key: CardKey, open: boolean) => {
+    cardOpenRef.current[key] = open;
+    if (key === 'bookmark') setBookmarkCardOpen(open);
+    else if (key === 'arm') setArmCardOpen(open);
+    else setGalaxyCardOpen(open);
+  }, []);
+
+  /** Collapse a card back into its opening trigger (原路缩回); unmount on done. */
+  const closeCard = useCallback(
+    (key: CardKey) => {
+      if (!cardOpenRef.current[key]) return;
+      const el = cardRefs.current[key];
+      if (!el) {
+        cardClosingRef.current[key] = false;
+        setOpenCard(key, false);
+        return;
+      }
+      cardClosingRef.current[key] = true;
+      const trig = cardTriggerRef.current[key];
+      if (trig instanceof HTMLElement) setOriginFromTrigger(el, trig);
+      else if (trig) setOriginFromPoint(el, trig.x, trig.y);
+      const epoch = ++cardCloseEpochRef.current[key];
+      playExit(
+        el,
+        'uni-origin-out',
+        () => {
+          if (cardCloseEpochRef.current[key] !== epoch) return; // a reopen cancelled this close
+          cardClosingRef.current[key] = false;
+          setOpenCard(key, false);
+        },
+        240
+      );
+    },
+    [setOpenCard]
+  );
+
+  /** Open a card from a trigger (element or click point); close the others in parallel. */
+  const openCard = useCallback(
+    (key: CardKey, trigger: CardTrigger) => {
+      cardTriggerRef.current[key] = trigger;
+      (['bookmark', 'arm', 'galaxy'] as const).forEach((k) => {
+        if (k !== key) closeCard(k); // mutual exclusion — each card exits into its own origin
+      });
+      if (cardOpenRef.current[key]) {
+        if (!cardClosingRef.current[key]) return; // already fully open
+        // mid-close: cancel the pending close and replay the enter from the new origin
+        cardCloseEpochRef.current[key]++;
+        cardClosingRef.current[key] = false;
+        const el = cardRefs.current[key];
+        if (el) playCardEnter(el, trigger);
+        return;
+      }
+      setOpenCard(key, true);
+    },
+    [closeCard, setOpenCard]
+  );
+
+  /** Trigger buttons toggle: open when closed, collapse back when open. */
+  const toggleCard = useCallback(
+    (key: CardKey, trigger: HTMLElement) => {
+      if (cardOpenRef.current[key] && !cardClosingRef.current[key]) closeCard(key);
+      else openCard(key, trigger);
+    },
+    [closeCard, openCard]
+  );
+
+  /* 一镜到底 — each dossier card plays its origin enter the moment it mounts */
+  useIsoLayoutEffect(() => {
+    if (!bookmarkCardOpen) return;
+    const el = cardRefs.current.bookmark;
+    if (el) playCardEnter(el, cardTriggerRef.current.bookmark);
+  }, [bookmarkCardOpen]);
+  useIsoLayoutEffect(() => {
+    if (!armCardOpen) return;
+    const el = cardRefs.current.arm;
+    if (el) playCardEnter(el, cardTriggerRef.current.arm);
+  }, [armCardOpen]);
+  useIsoLayoutEffect(() => {
+    if (!galaxyCardOpen) return;
+    const el = cardRefs.current.galaxy;
+    if (el) playCardEnter(el, cardTriggerRef.current.galaxy);
+  }, [galaxyCardOpen]);
 
   const flashBmMsg = useCallback((text: string) => {
     setBmMsg(text);
@@ -1307,10 +1417,7 @@ export default function GalaxyScene() {
             </div>
             <button
               type="button"
-              onClick={() => {
-                setArmCardOpen((v) => !v);
-                if (!armCardOpen) setGalaxyCardOpen(false);
-              }}
+              onClick={(e) => toggleCard('arm', e.currentTarget)}
               aria-expanded={armCardOpen}
               className={cn(
                 'mt-2.5 flex min-h-[30px] w-full items-center justify-center gap-1.5 rounded-lg border text-[11px] font-medium transition-all duration-200 [@media(pointer:coarse)]:min-h-[40px]',
@@ -1325,9 +1432,8 @@ export default function GalaxyScene() {
             {/* F43 — Milky Way encyclopedia dossier */}
             <button
               type="button"
-              onClick={() => {
-                setGalaxyCardOpen((v) => !v);
-                if (!galaxyCardOpen) setArmCardOpen(false);
+              onClick={(e) => {
+                toggleCard('galaxy', e.currentTarget);
                 playEventSound('click'); // F23
               }}
               aria-expanded={galaxyCardOpen}
@@ -1344,7 +1450,7 @@ export default function GalaxyScene() {
             {/* F30 — open the personal star map */}
             <button
               type="button"
-              onClick={() => setBookmarkCardOpen((v) => !v)}
+              onClick={(e) => toggleCard('bookmark', e.currentTarget)}
               aria-expanded={bookmarkCardOpen}
               className={cn(
                 'mt-1.5 flex min-h-[30px] w-full items-center justify-center gap-1.5 rounded-lg border text-[11px] font-medium transition-all duration-200 [@media(pointer:coarse)]:min-h-[40px]',
@@ -1391,9 +1497,8 @@ export default function GalaxyScene() {
               }}
               type="button"
               style={{ display: 'none', borderColor: `${spec.color}40` }}
-              onClick={() => {
-                setArmCardOpen(true);
-                setGalaxyCardOpen(false);
+              onClick={(e) => {
+                openCard('arm', { x: e.clientX, y: e.clientY });
               }}
               title={L(`${spec.name} · ${spec.desc}`, `${spec.nameEn} · ${spec.descEn}`)}
               className="pointer-events-auto absolute left-0 top-0 z-[25] flex items-center gap-1.5 rounded-full border bg-black/55 px-2.5 py-1 shadow-md shadow-black/40 backdrop-blur-md transition-transform duration-150 hover:scale-105"
@@ -1428,14 +1533,14 @@ export default function GalaxyScene() {
             </button>
           ))}
 
-          {/* F30 — personal star-map dossier card */}
-          <div
-            aria-hidden={!bookmarkCardOpen}
-            className={cn(
-              'uni-anim-scale-in absolute bottom-24 right-4 z-30 w-[280px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:left-3 portrait:right-3 portrait:w-auto portrait:max-w-none',
-              bookmarkCardOpen ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
-            )}
-          >
+          {/* F30 — personal star-map dossier card (opens from / collapses into its trigger) */}
+          {bookmarkCardOpen && (
+            <div
+              ref={(el) => {
+                cardRefs.current.bookmark = el;
+              }}
+              className="absolute bottom-24 right-4 z-30 w-[min(92vw,280px)] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:left-3 portrait:right-3 portrait:w-auto max-[480px]:left-3 max-[480px]:right-3 max-[480px]:w-auto"
+            >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold tracking-[0.26em] text-amber-200/90">{L('星图收藏', 'STAR BOOKMARKS')}</p>
@@ -1443,7 +1548,7 @@ export default function GalaxyScene() {
               </div>
               <button
                 type="button"
-                onClick={() => setBookmarkCardOpen(false)}
+                onClick={() => closeCard('bookmark')}
                 aria-label={L('关闭星图收藏', 'Close star bookmarks')}
                 className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
               >
@@ -1546,15 +1651,16 @@ export default function GalaxyScene() {
               </p>
             </div>
           </div>
-
-          {/* Spiral-arm dossier card (F12) */}
-          <div
-            aria-hidden={!armCardOpen}
-            className={cn(
-              'uni-anim-scale-in absolute bottom-24 left-4 z-30 w-[312px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:w-auto portrait:max-w-none',
-              armCardOpen ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
             )}
-          >
+
+          {/* Spiral-arm dossier card (F12) — opens from / collapses into its trigger */}
+          {armCardOpen && (
+            <div
+              ref={(el) => {
+                cardRefs.current.arm = el;
+              }}
+              className="absolute bottom-24 left-4 z-30 w-[min(92vw,312px)] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:left-3 portrait:w-auto max-[480px]:left-3 max-[480px]:right-3 max-[480px]:w-auto"
+            >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold tracking-[0.26em] text-violet-200/90">{L('旋臂档案', 'SPIRAL ARM PROFILES')}</p>
@@ -1562,7 +1668,7 @@ export default function GalaxyScene() {
               </div>
               <button
                 type="button"
-                onClick={() => setArmCardOpen(false)}
+                onClick={() => closeCard('arm')}
                 aria-label={L('关闭旋臂档案', 'Close spiral arm profiles')}
                 className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
               >
@@ -1598,15 +1704,16 @@ export default function GalaxyScene() {
               )}
             </p>
           </div>
-
-          {/* F43 — Milky Way encyclopedia dossier card (mutually exclusive with the arm dossier) */}
-          <div
-            aria-hidden={!galaxyCardOpen}
-            className={cn(
-              'uni-anim-scale-in absolute bottom-24 left-4 z-30 w-[312px] max-w-[86vw] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl transition-all duration-300 portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:w-auto portrait:max-w-none',
-              galaxyCardOpen ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'
             )}
-          >
+
+          {/* F43 — Milky Way encyclopedia dossier card (mutually exclusive with the arm dossier) — origin open/close */}
+          {galaxyCardOpen && (
+            <div
+              ref={(el) => {
+                cardRefs.current.galaxy = el;
+              }}
+              className="absolute bottom-24 left-4 z-30 w-[min(92vw,312px)] rounded-2xl border border-white/10 bg-black/60 p-4 shadow-2xl shadow-black/60 backdrop-blur-2xl portrait:bottom-[calc(8rem+var(--ui-safe-bottom))] portrait:right-3 portrait:left-3 portrait:w-auto max-[480px]:left-3 max-[480px]:right-3 max-[480px]:w-auto"
+            >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold tracking-[0.26em] text-teal-200/90">{L('银河系档案', 'MILKY WAY FACT SHEET')}</p>
@@ -1614,7 +1721,7 @@ export default function GalaxyScene() {
               </div>
               <button
                 type="button"
-                onClick={() => setGalaxyCardOpen(false)}
+                onClick={() => closeCard('galaxy')}
                 aria-label={L('关闭银河系档案', 'Close Milky Way fact sheet')}
                 className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200"
               >
@@ -1651,6 +1758,7 @@ export default function GalaxyScene() {
               )}
             </p>
           </div>
+            )}
 
           {/* bottom-center tour control bar */}
           <div className="uni-anim-fade-up absolute bottom-5 left-1/2 z-20 -translate-x-1/2 portrait:bottom-[calc(3.75rem+var(--ui-safe-bottom))] portrait:w-max portrait:max-w-[96vw]">
