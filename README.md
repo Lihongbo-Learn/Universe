@@ -4,7 +4,7 @@
 
 一个基于 **Next.js + Three.js** 的单页沉浸式宇宙探索应用。三大场景——**太阳系 / 银河系 / 黑洞**——全部使用程序化生成的材质与粒子系统，无任何外部图片素材，在浏览器中即可漫游从行星轨道到事件视界的宇宙尺度。
 
-![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/版本-v0.3-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
 ## 📸 截图预览
 
@@ -48,11 +48,15 @@
 
 ## 🎛️ 通用功能
 
+- 🌍 **中英双语**：自动跟随设备语言，设置面板可手动切换（中文 / English / 跟随设备），Canvas 标签同步重绘
+- ⚙️ **设置界面**：语言切换 + 键盘快捷键速查（`,` 打开）
+- 🪟 **面板可折叠**：三大场景的控制面板一键收起成悬浮圆钮，小屏设备也能看全场景
+- ✨ **一镜到底过渡动画**：所有弹窗与卡片从触发位置展开、关闭时原路缩回，全程无跳变
 - 🎨 深色太空主题 UI，玻璃拟态卡片，全程序化材质（零外部图片）
 - 📸 一键截图下载（含后处理效果）
 - 🖥️ 画质三档切换（高清/均衡/流畅）+ **FPS 双向自适应调档**（低帧自动降档、余量自动回升，手动选择优先）
 - 🔊 Web Audio 全合成音效：三场景差异化环境底噪 + UI 事件音，双滑杆独立音量
-- ⌨️ 快捷键：`1/2/3` 切换场景 · `M` 总静音 · `Space` 暂停太阳系
+- ⌨️ 快捷键：`1/2/3` 切换场景 · `M` 总静音 · `Space` 暂停太阳系 · `,` 设置
 - 📱 移动端适配：竖屏两行头部布局、44px 触控区、刘海屏 safe-area、双指缩放
 - 左下角 FPS 徽章（点击/hover 查看渲染信息）
 
