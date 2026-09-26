@@ -1,0 +1,130 @@
+简体中文 | [English](README.en.md)
+
+# 🔭 Universe — 宇宙浏览器
+
+一个基于 **Next.js + Three.js** 的单页沉浸式宇宙探索应用。三大场景——**太阳系 / 银河系 / 黑洞**——全部使用程序化生成的材质与粒子系统，无任何外部图片素材，在浏览器中即可漫游从行星轨道到事件视界的宇宙尺度。
+
+![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+
+## 📸 截图预览
+
+| 太阳系 — J2000 真实轨道 + 星座连线 | 银河系 — 120,000 恒星 + 四旋臂标注 |
+|---|---|
+| ![太阳系](docs/screenshots/solar-system.png) | ![银河系](docs/screenshots/galaxy.png) |
+
+| 黑洞 — 引力透镜 + 多普勒成束吸积盘 | 点击行星 → 镜头飞近跟随 + 资料卡 |
+|---|---|
+| ![黑洞](docs/screenshots/black-hole.png) | ![土星聚焦](docs/screenshots/saturn-focus.png) |
+
+## ✨ 三大场景
+
+### 🪐 太阳系
+- **8 大行星真实运动**：公转 + 自转角速度按 NASA 真实周期比例（离太阳越近越快），真实轨道倾角与自轴倾角（天王星 97.8° 侧躺）
+- **真实 J2000 轨道要素**：椭圆轨道（真实偏心率）+ 升交点 + 近日点经度，牛顿迭代求解开普勒方程，任意日历日期都对应真实行星构型
+- **日期模拟器**：跳转任意日期（1900–2100），快捷按钮「回到今天 / 流星雨极大 / 哈雷近日点」，实时锁定（1 秒 = 1 秒真实运动）
+- **行星连珠检测器**：实时检测四星/五星聚拢，内置历史天象一键跳转（2020 木土大合、2012 金星凌日等）
+- **哈雷彗星**：真实离心率轨道 + 双尾（离子尾 + 尘埃尾），近日点明显加速
+- **小行星带 + 柯伊伯带**：6,100 颗粒子按开普勒第三定律差速旋转
+- **7 个真实星座**：北斗七星 / 猎户座 / 仙后座 / 狮子座 / 天蝎座 / 南十字座 / 船底座（J2000 赤经赤纬），点击查看档案卡 + Canvas 星图，快速定位飞行
+- **猎户座流星雨演示**：地球穿越哈雷碎片带时流星强度按高斯窗口极大
+- **点击天体镜头飞近跟随**：资料卡弹出 + 相机持续追踪行星公转，关闭卡片释放
+- 轨迹尾迹、行星标签（屏幕空间自动避让）、时间流速（暂停/1×/10×）、轨道线开关
+
+### 🌌 银河系
+- **120,000 恒星 GPU Points**：4 条对数螺旋旋臂、按黑体温度着色（红 → 蓝白）、26,000 暗尘埃粒子形成尘埃带、中心亮核 + 紫晕
+- **三段自动巡游（24s）**：俯瞰 → 侧视 → 穿入旋臂，用户操作随时接管
+- **太阳位置标记**：猎户臂上 ≈2.6 万光年处的琥珀色脉冲标记
+- **四旋臂科普标注** + 银河系百科档案卡（直径 / 恒星数 / 银河年 / 人马座 A* 等 9 条事实）
+- **恒星悬停档案**：空间索引加速查询，悬停显示光谱型 / 恒星类型 / 旋臂归属 / 距银心距离
+- **个人星图收藏**：点击收藏恒星（localStorage 持久化，星官命名），支持定位飞行与 JSON 导出/导入
+
+### 🕳️ 黑洞
+- **自定义 Shader 吸积盘**：内薄外厚、开普勒差速旋转、fbm 流丝、温度色带、**多普勒成束**（单侧增亮偏蓝）、白热内缘——Interstellar 风格
+- **屏幕空间引力透镜后处理**：背景星场弯折、光子环、RGB 色散、爱因斯坦环辉光，可平滑开关
+- **真实广义相对论光线演示**：史瓦西零测地线 RK4 积分，四束不同瞄准参数的光线呈现偏折 / 绕行光子球 / 视界俘获（临界参数 b=3√3/2·Rs）
+- **引力弹弓演示**：N 体二体模拟双曲线掠过，彗尾轨迹实时渲染
+- **时间膨胀计算器**：滑动距视界距离，实时计算 √(1−Rs/r) 时间流速
+- 科学注释卡、视角预设（正视/俯瞰/掠过）、暂停时吸积盘仍保留「呼吸感」
+
+## 🎛️ 通用功能
+
+- 🎨 深色太空主题 UI，玻璃拟态卡片，全程序化材质（零外部图片）
+- 📸 一键截图下载（含后处理效果）
+- 🖥️ 画质三档切换（高清/均衡/流畅）+ **FPS 双向自适应调档**（低帧自动降档、余量自动回升，手动选择优先）
+- 🔊 Web Audio 全合成音效：三场景差异化环境底噪 + UI 事件音，双滑杆独立音量
+- ⌨️ 快捷键：`1/2/3` 切换场景 · `M` 总静音 · `Space` 暂停太阳系
+- 📱 移动端适配：竖屏两行头部布局、44px 触控区、刘海屏 safe-area、双指缩放
+- 左下角 FPS 徽章（点击/hover 查看渲染信息）
+
+## 🚀 快速开始
+
+要求 Node.js ≥ 20（Windows / macOS / Linux 均可，已实测 Windows + Node 26）。
+
+```bash
+# 1. 安装依赖
+npm install
+
+# 2. 开发模式（端口 3000）
+npm run dev
+
+# 3. 生产构建 + 启动（standalone 输出，脚本自动复制静态资源）
+npm run build
+npm run start
+```
+
+浏览器打开 [http://localhost:3000](http://localhost:3000) 即可开始探索。
+
+> - 构建/启动脚本已做跨平台处理（`scripts/copy-standalone.mjs` 负责把静态资源复制进 standalone 产物），npm、pnpm、yarn、bun 皆可用。
+> - 中国大陆网络环境安装依赖可加镜像：`npm install --registry=https://registry.npmmirror.com`
+> - 三大场景均为 WebGL 重度渲染，建议使用桌面版 Chrome/Edge/Firefox。低帧率下应用会自动降档画质。
+
+## 📁 项目结构
+
+```
+src/
+├── app/
+│   ├── page.tsx              # 挂载 UniverseBrowser
+│   └── layout.tsx            # 全局布局 + viewport
+├── components/
+│   ├── ui/                   # shadcn/ui 组件
+│   └── universe/             # ⭐ 核心模块
+│       ├── UniverseBrowser.tsx    # 共享壳层：顶栏 / 场景切换 / FPS / 音效 / 画质
+│       ├── SolarSystemScene.tsx   # 太阳系场景
+│       ├── GalaxyScene.tsx        # 银河系场景
+│       ├── BlackHoleScene.tsx     # 黑洞场景
+│       ├── planetData.ts          # NASA 真实数据 + J2000 轨道要素
+│       ├── proceduralTextures.ts  # 程序化贴图（行星表面 / 光环 / 辉光）
+│       ├── galaxyShaders.ts       # 银河系 GLSL 着色器
+│       ├── blackHoleShaders.ts    # 吸积盘 GLSL 着色器
+│       ├── lensingPass.ts         # 引力透镜后处理 Pass
+│       ├── quality.ts             # 画质档位 + FPS 自适应调控器
+│       ├── soundscape.ts          # Web Audio 合成音效引擎
+│       ├── capture.ts             # 场景截图注册表
+│       └── fps.ts                 # FPS 计量器（DOM 直写，零 React 重渲染）
+└── lib/utils.ts              # 工具函数
+
+scripts/
+└── copy-standalone.mjs       # 构建后把静态资源复制进 standalone 产物
+
+docs/screenshots/             # README 展示截图
+```
+
+## 🛠️ 技术栈
+
+| 类别 | 技术 |
+|---|---|
+| 框架 | Next.js 16 (App Router) + React 19 + TypeScript |
+| 3D 渲染 | Three.js 0.186（原生 API，自写渲染循环） |
+| 着色器 | 自定义 GLSL（恒星粒子 / 吸积盘 / 引力透镜后处理） |
+| UI | Tailwind CSS 4 + shadcn/ui + lucide-react |
+| 物理 | 开普勒方程数值求解（牛顿迭代）、史瓦西零测地线 RK4 积分、N 体二体模拟 |
+| 音频 | Web Audio API 全程序化合成 |
+| 数据 | NASA 行星事实表、JPL J2000.0 轨道要素、Hipparcos 星表坐标 |
+
+## 🤖 开发致谢
+
+本项目由 [GLM-5.3](https://z.ai)（Z.ai）大模型驱动开发——包括全部三大场景、44 项功能迭代、着色器与物理模拟，以及本仓库的构建配置。
+
+## 📜 License
+
+[Apache License 2.0](LICENSE)
