@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A single-page immersive universe exploration app built with **Next.js + Three.js**. Four scenes — **Solar System / Milky Way / Black Hole / Zodiac** — rendered entirely with procedurally generated materials and particle systems, no external image assets. Roam from planetary orbits to the event horizon, right in your browser.
 
-![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/version-v0.4-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/version-v0.5-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
 ## 📸 Screenshots
 
@@ -60,9 +60,9 @@ A single-page immersive universe exploration app built with **Next.js + Three.js
 - ✨ **Origin-aware one-shot transitions**: dialogs and cards open from the exact tap point and close back into it — no jump cuts
 - 🎨 Dark space-themed UI, glassmorphism cards, fully procedural materials (zero external images)
 - 📸 One-click screenshot download (including post-processing)
-- 🖥️ Three quality presets (HD / Balanced / Smooth) + **bidirectional FPS-adaptive governor** (auto downshift at low FPS, auto recovery with headroom; manual choice always wins)
+- 🖥️ Four quality presets (HD / Balanced / Light / Smooth, incl. a 62.5% step) + **bidirectional FPS-adaptive governor** (auto downshift at low FPS, auto recovery with headroom; manual choice always wins)
 - 🔊 Fully synthesized Web Audio: per-scene ambient drones + UI event sounds with independent volume sliders
-- ⌨️ Shortcuts: `1/2/3/4` switch scenes · `M` master mute · `Space` pause the solar system · `,` settings
+- ⌨️ Shortcuts: `1/2/3/4` switch scenes · `M` master mute · `Space` pause the solar system · `,` settings · `Esc` (zodiac: return to overview)
 - 🎬 **Cinematic scene travel**: the outgoing scene recedes into a point while the next grows from the depths (zoom-through, no jump cuts)
 - 📱 Mobile-ready: two-row portrait header, 44px touch targets, safe-area insets, pinch zoom
 - Bottom-left FPS badge (click/hover for render info)

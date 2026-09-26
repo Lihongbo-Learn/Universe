@@ -5,12 +5,12 @@
  * to its renderer (and composer where present) on change.
  */
 
-export type QualityLevel = 0 | 1 | 2; // 0 = 流畅, 1 = 均衡, 2 = 高清
+export type QualityLevel = 0 | 1 | 2 | 3; // 0 = 流畅, 1 = 轻量, 2 = 均衡, 3 = 高清
 
-const SCALE_BY_LEVEL = [0.5, 0.75, 1.0] as const;
-const LABELS = ['流畅', '均衡', '高清'] as const;
+const SCALE_BY_LEVEL = [0.5, 0.625, 0.75, 1.0] as const;
+const LABELS = ['流畅', '轻量', '均衡', '高清'] as const;
 
-let level: QualityLevel = 2;
+let level: QualityLevel = 3;
 const listeners = new Set<(scale: number) => void>();
 
 /* -------- F41: FPS-driven recovery — restore levels the governor dropped -------- */
@@ -53,7 +53,7 @@ export function notifyFps(fps: number): void {
     // samples, but only levels this governor dropped itself (a manual choice
     // is respected and never silently overwritten upward).
     if (fps >= 45) {
-      if (autoDropped && level < 2) {
+      if (autoDropped && level < 3) {
         highStreak += 1;
         if (highStreak >= HIGH_STREAK_NEEDED) {
           highStreak = 0;
@@ -103,7 +103,7 @@ export function getRenderScale(): number {
 }
 
 export function cycleQuality(): QualityLevel {
-  level = ((level + 1) % 3) as QualityLevel;
+  level = ((level + 1) % 4) as QualityLevel;
   lowStreak = 0;
   highStreak = 0;
   autoDropped = false; // manual choice wins — no automatic step-up afterwards
