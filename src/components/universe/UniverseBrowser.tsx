@@ -444,7 +444,7 @@ export default function UniverseBrowser() {
              row 2 = scene tabs stretched full-width (order-3)
            landscape keeps the original single-row justify-between. */}
       <header
-        className="uni-anim-fade-in pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between gap-3 bg-gradient-to-b from-black/70 via-black/25 to-transparent px-4 pb-8 pt-[max(0.75rem,var(--ui-safe-top))] sm:px-6 portrait:flex-wrap portrait:gap-y-2"
+        className="uni-anim-fade-in pointer-events-none absolute inset-x-0 top-0 z-40 flex flex-wrap items-start justify-between gap-3 bg-gradient-to-b from-black/70 via-black/25 to-transparent px-4 pb-8 pt-[max(0.75rem,var(--ui-safe-top))] sm:px-6 gap-y-2 portrait:gap-y-2"
       >
         {/* brand */}
         <div className="pointer-events-auto flex items-center gap-3 portrait:order-1 portrait:gap-2">
@@ -460,7 +460,7 @@ export default function UniverseBrowser() {
         {/* tabs */}
         <nav
           aria-label={L('场景切换', 'Scene switcher')}
-          className="pointer-events-auto flex items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/45 p-1.5 shadow-lg shadow-black/40 backdrop-blur-xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden portrait:order-3 portrait:max-w-[96vw] portrait:w-full portrait:justify-center"
+          className="pointer-events-auto flex flex-wrap items-center justify-center gap-1 rounded-2xl border border-white/10 bg-black/45 p-1.5 shadow-lg shadow-black/40 backdrop-blur-xl max-[1536px]:order-3 max-[1536px]:w-full portrait:order-3 portrait:w-full"
         >
           {SCENE_TABS.map((tab) => {
             const Icon = tab.icon;
@@ -472,7 +472,7 @@ export default function UniverseBrowser() {
                 onClick={() => switchTo(tab.id)}
                 aria-pressed={isActive}
                 className={cn(
-                  'group relative flex min-h-[38px] items-center gap-2 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-medium transition-all duration-300 portrait:px-2.5 sm:px-4',
+                  'group relative flex min-h-[38px] items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-1.5 text-[13px] font-medium transition-all duration-300 sm:text-sm sm:px-3 portrait:px-2 max-[1280px]:sm:px-2.5',
                   isActive
                     ? 'bg-gradient-to-b from-amber-200/20 to-amber-400/10 text-amber-200 shadow-[inset_0_0_0_1px_rgba(252,211,77,0.35),0_0_22px_rgba(251,191,36,0.12)]'
                     : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
