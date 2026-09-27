@@ -31,23 +31,7 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import {
-  PLANETS,
-  SUN_INFO,
-  SCENE_LAYOUT,
-  SECONDS_PER_EARTH_YEAR,
-  SECONDS_PER_EARTH_SPIN,
-  HALLEY_INFO,
-  HALLEY_ORBIT,
-  J2000_MEAN_LONGITUDE_DEG,
-  J2000_ASCENDING_NODE_DEG,
-  J2000_PERIHELION_LON_DEG,
-  J2000_ECCENTRICITY,
-  DAYS_PER_SIM_SECOND,
-  dateMsToSimTime,
-  simTimeToDateMs,
-  type BodyInfo,
-} from '@/components/universe/planetData';
+import {PLANETS, MOON_INFO, SUN_INFO, SCENE_LAYOUT, SECONDS_PER_EARTH_YEAR, SECONDS_PER_EARTH_SPIN, HALLEY_INFO, HALLEY_ORBIT, J2000_MEAN_LONGITUDE_DEG, J2000_ASCENDING_NODE_DEG, J2000_PERIHELION_LON_DEG, J2000_ECCENTRICITY, DAYS_PER_SIM_SECOND, dateMsToSimTime, simTimeToDateMs, type BodyInfo, moonPhaseInfo} from '@/components/universe/planetData';
 import { L, useLang, subscribeLang, getLang } from '@/components/universe/i18n';
 import { createFpsMeter } from '@/components/universe/fps';
 import { registerCapturer } from '@/components/universe/capture';
@@ -104,7 +88,7 @@ const TRAIL_POINTS = 96;
 /** fraction of a full orbit covered by the trailing arc */
 const TRAIL_ARC_FRACTION = 0.16;
 
-const LABEL_BODIES: BodyInfo[] = [SUN_INFO, ...PLANETS, HALLEY_INFO];
+const LABEL_BODIES: BodyInfo[] = [SUN_INFO, ...PLANETS, HALLEY_INFO, MOON_INFO];
 
 /** F26 — ISO yyyy-mm-dd of a Date, in local calendar terms */
 const toISODateLocal = (d: Date): string =>
@@ -760,6 +744,7 @@ export default function SolarSystemScene() {
   const alignRef = useRef<HTMLParagraphElement | null>(null);
   /* F25 — constellation quick-locate flight */
   const conFlightRef = useRef<number | null>(null);
+  const moonPivotRef = useRef<THREE.Group | null>(null);
   const constellationCentersRef = useRef<THREE.Vector3[]>([]);
   /* 一镜到底 origin-transition bookkeeping (bridges the once-registered scene
      effect and the React card lifecycle). Cards stay mounted during their exit:
@@ -1408,6 +1393,9 @@ export default function SolarSystemScene() {
         const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(0.3, 24, 16), moonMat);
         moonMesh.position.set(2.35, 0, 0);
         moonPivot.add(moonMesh);
+        const moonHit = buildHitProxy(1.6, 'moon');
+        moonPivot.add(moonHit);
+        hitMeshes.push(moonHit);
         system.add(moonPivot);
         disposables.push(moonMesh.geometry, moonMat);
       }
@@ -1435,6 +1423,8 @@ export default function SolarSystemScene() {
         aVis: L.orbit,
         moonPivot,
       });
+
+        moonPivotRef.current = moonPivot;
     });
     nodesRef.current = nodes;
 
@@ -1782,6 +1772,7 @@ export default function SolarSystemScene() {
       const id = hits[0].object.userData.bodyId as string;
       if (id === 'sun') return SUN_INFO;
       if (id === 'halley') return HALLEY_INFO;
+      if (id === 'moon') return MOON_INFO;
       return nodes.find((n) => n.info.id === id)?.info ?? null;
     };
 
@@ -1927,6 +1918,7 @@ export default function SolarSystemScene() {
     const tmpV = new THREE.Vector3();
     const labelTargets: THREE.Object3D[] = [sunGroup, ...nodes.map((n) => n.system)];
     if (cometRef.current) labelTargets.push(cometRef.current.system);
+    if (moonPivotRef.current) labelTargets.push(moonPivotRef.current);
     const placedLabels: { sx: number; sy: number }[] = [];
 
     /* F26 — calendar display (written straight to the DOM, throttled) */
@@ -2055,6 +2047,7 @@ export default function SolarSystemScene() {
     const bodySizeOf = (id: string): number => {
       if (id === 'sun') return 4.6;
       if (id === 'halley') return 0.9; // frame the coma generously
+      if (id === 'moon') return 0.6; // include a slice of the orbit
       return SCENE_LAYOUT[id]?.size ?? 1.2;
     };
 
@@ -2067,6 +2060,12 @@ export default function SolarSystemScene() {
         const c = cometRef.current;
         if (!c) return false;
         c.system.getWorldPosition(out);
+        return true;
+      }
+      if (id === 'moon') {
+        const mp = moonPivotRef.current;
+        if (!mp) return false;
+        mp.getWorldPosition(out);
         return true;
       }
       const n = nodes.find((x) => x.info.id === id);
@@ -2970,6 +2969,21 @@ export default function SolarSystemScene() {
               </div>
 
               <p className="mt-4 border-l-2 border-amber-200/30 pl-3 text-[13px] leading-relaxed text-zinc-300">
+                {selected.id === 'moon' &&
+                  (() => {
+                    const ph = moonPhaseInfo(Date.now());
+                    return (
+                      <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+                        <p className="text-[10px] tracking-[0.2em] text-zinc-500">{L('今日月相', "TODAY'S MOON PHASE")}</p>
+                        <p className="mt-0.5 text-[13px] font-semibold text-zinc-100">
+                          {L(ph.name, ph.nameEn)}
+                          <span className="ml-1.5 text-[10px] font-normal text-zinc-400">
+                            {L('照亮', 'illuminated')} {ph.illumination}%
+                          </span>
+                        </p>
+                      </div>
+                    );
+                  })()}
                 {L(selected.intro, selected.introEn)}
               </p>
 

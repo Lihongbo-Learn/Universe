@@ -1011,7 +1011,7 @@ export default function UniverseBrowser() {
             </section>
 
             <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
-              UNIVERSE · v0.9
+              UNIVERSE · v1.0
             </p>
           </div>
         </div>
