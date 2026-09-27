@@ -621,8 +621,8 @@ export default function ZodiacScene() {
     disposables.push(sunSpriteMat);
 
     let sunLabel: THREE.Sprite | null = null;
-    const buildSunLabel = (): THREE.Sprite => {
-      const text = getLang() === 'en' ? `Sun in ${sunSign.nameEn}` : `太阳此刻在 ${sunSign.name}`;
+    const buildSunLabel = (sgn: ZodiacSign): THREE.Sprite => {
+      const text = getLang() === 'en' ? `Sun in ${sgn.nameEn}` : `太阳此刻在 ${sgn.name}`;
       const tex = makeSignLabelTexture(text, 'rgba(252,211,77,0.95)');
       const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
       const label = new THREE.Sprite(mat);
@@ -632,7 +632,24 @@ export default function ZodiacScene() {
       disposables.push(tex, mat);
       return label;
     };
-    sunLabel = buildSunLabel();
+    sunLabel = buildSunLabel(sunSign);
+    let lastSunSignIdx = sunSignIdx;
+
+    /* the marker follows the real clock — the Sun advances along the ecliptic */
+    const sunClock = window.setInterval(() => {
+      const lon = sunEclipticLon(Date.now());
+      const a = THREE.MathUtils.degToRad(lon);
+      sunSprite.position.set(R * Math.cos(a), 0, -R * Math.sin(a));
+      if (sunLabel) {
+        sunLabel.position.copy(sunSprite.position.clone().normalize().multiplyScalar(R + 14));
+      }
+      const idx = Math.floor(lon / 30) % 12;
+      if (idx !== lastSunSignIdx) {
+        lastSunSignIdx = idx;
+        if (sunLabel) scene.remove(sunLabel);
+        sunLabel = buildSunLabel(SIGNS[idx]);
+      }
+    }, 30000);
 
     /* redraw canvas labels when the language changes */
     const unsubLang = subscribeLang(() => {
@@ -654,6 +671,7 @@ export default function ZodiacScene() {
         mat.needsUpdate = true;
         oldMap?.dispose();
         disposables.push(newTex);
+        sunLabel.position.copy(sunSprite.position.clone().normalize().multiplyScalar(R + 14));
       }
     });
 
@@ -865,6 +883,7 @@ export default function ZodiacScene() {
       el.removeEventListener('pointerdown', cancelFlight);
       el.removeEventListener('wheel', cancelFlight);
       window.removeEventListener('keydown', onKey);
+      window.clearInterval(sunClock);
       controls.dispose();
       disposables.forEach((d) => d.dispose());
       renderer.dispose();

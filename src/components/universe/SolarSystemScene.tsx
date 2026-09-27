@@ -1755,6 +1755,14 @@ export default function SolarSystemScene() {
       return renderer.domElement.toDataURL('image/png');
     });
 
+    /* Esc — close any open card (releases the follow camera, like the zodiac scene) */
+    const onEsc = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return;
+      closeInfoRef.current();
+      closeConRef.current();
+    };
+    window.addEventListener('keydown', onEsc);
+
     /* ------------------------------ interaction ------------------------------ */
     const raycaster = new THREE.Raycaster();
     raycaster.params.Points = { threshold: 16 };
@@ -2477,6 +2485,7 @@ export default function SolarSystemScene() {
       registerCapturer(null);
       unsubQuality();
       unsubDpr();
+      window.removeEventListener('keydown', onEsc);
       ro.disconnect();
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('pointermove', onPointerMove);

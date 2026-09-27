@@ -62,7 +62,8 @@ A single-page immersive universe exploration app built with **Next.js + Three.js
 - 📸 One-click screenshot download (including post-processing)
 - 🖥️ Four quality presets (HD / Balanced / Light / Smooth, incl. a 62.5% step) + **bidirectional FPS-adaptive governor** (auto downshift at low FPS, auto recovery with headroom; manual choice always wins)
 - 🔊 Fully synthesized Web Audio: per-scene ambient drones + UI event sounds with independent volume sliders
-- ⌨️ Shortcuts: `1/2/3/4` switch scenes · `M` master mute · `Space` pause the solar system · `,` settings · `Esc` (zodiac: return to overview)
+- ⌨️ Shortcuts: `1/2/3/4` switch scenes · `F` fullscreen · `M` master mute · `Space` pause the solar system · `Esc` close cards (zodiac: return to overview) · `,` settings
+- 🖥️ **Fullscreen mode**: one-click immersion (shortcut F)
 - 🎬 **Cinematic scene travel**: the outgoing scene recedes into a point while the next grows from the depths (zoom-through, no jump cuts)
 - 📱 Mobile-ready: two-row portrait header, 44px touch targets, safe-area insets, pinch zoom
 - Bottom-left FPS badge (click/hover for render info)
