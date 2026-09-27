@@ -897,6 +897,24 @@ export default function ZodiacScene() {
   const sign = selected !== null ? SIGNS[selected] : null;
   const ElementIcon = sign ? ELEMENT_ICONS[sign.element] : null;
 
+  /* 今夜可见性：太阳黄经与星座中心的角距——星座与太阳同侧时被阳光淹没 */
+  let visibility: { label: [string, string]; color: string } | null = null;
+  if (sign) {
+    const signLon = ((selected ?? 0) * 30 + 15) % 360;
+    const sunLon = sunEclipticLon(Date.now());
+    let d = Math.abs(signLon - sunLon);
+    if (d > 180) d = 360 - d;
+    if (d < 25) {
+      visibility = { label: ['被阳光淹没 · 今夜不可见', 'Lost in the Sun — not visible tonight'], color: '#f87171' };
+    } else if (d < 55) {
+      visibility = { label: ['贴近太阳 · 黎明/黄昏低空短暂可见', 'Near the Sun — brief low-altitude views'], color: '#fbbf24' };
+    } else if (d < 115) {
+      visibility = { label: ['今夜适合观测', 'Good for observing tonight'], color: '#4ade80' };
+    } else {
+      visibility = { label: ['午夜高空 · 最佳观测期', 'High at midnight — peak season'], color: '#22d3ee' };
+    }
+  }
+
   return (
     <div ref={wrapRef} className="absolute inset-0" aria-label={L('十二星座场景', 'Zodiac scene')}>
       {/* top quick-focus chips */}
@@ -1001,6 +1019,15 @@ export default function ZodiacScene() {
               {ElementIcon && <ElementIcon className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden />}
               {L(ELEMENT_LABEL[sign.element][0], ELEMENT_LABEL[sign.element][1])}
             </span>
+            {visibility && (
+              <span
+                className="rounded-full border px-2.5 py-0.5 text-[10px] font-medium"
+                style={{ borderColor: `${visibility.color}55`, color: visibility.color, background: `${visibility.color}14` }}
+                title={L('按当前太阳位置推算', 'Based on the current solar position')}
+              >
+                {L(visibility.label[0], visibility.label[1])}
+              </span>
+            )}
           </div>
 
           <dl className="uni-anim-stagger mt-4 space-y-1.5 text-[11px]">
