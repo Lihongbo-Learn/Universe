@@ -26,7 +26,7 @@ import {
   STAR_VERTEX_SHADER,
 } from './blackHoleShaders';
 import { createLensingPass } from './lensingPass';
-import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
+import { getRenderScale, onRenderScaleChange, getDprCap, onDprCapChange } from '@/components/universe/quality';
 import { playEventSound } from '@/components/universe/soundscape';
 import { L, useLang } from './i18n';
 import { playEnter, playExit, setOriginFromPoint, setOriginFromTrigger } from './originTransition';
@@ -538,7 +538,7 @@ export default function BlackHoleScene() {
       /* ---------------- renderer ---------------- */
       const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
       activeRenderer = renderer;
-      const baseDpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const baseDpr = Math.min(window.devicePixelRatio || 1, 1.5, getDprCap());
       renderer.setPixelRatio(baseDpr * getRenderScale());
       renderer.setSize(wrap.clientWidth || 1, wrap.clientHeight || 1);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -873,6 +873,9 @@ export default function BlackHoleScene() {
       const unsubQuality = onRenderScaleChange(() => {
         resize();
       });
+      const unsubDpr = onDprCapChange(() => {
+        resize();
+      });
 
       /* ---------------- F13 camera view-preset tween ---------------- */
       const tweenFrom = new THREE.Vector3();
@@ -1076,6 +1079,7 @@ export default function BlackHoleScene() {
         fps.dispose();
         registerCapturer(null);
         unsubQuality();
+        unsubDpr();
         resizeObserver.disconnect();
         renderer.domElement.removeEventListener('pointerdown', cancelViewTween);
         renderer.domElement.removeEventListener('wheel', cancelViewTween);

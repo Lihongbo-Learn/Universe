@@ -51,7 +51,7 @@ import {
 import { L, useLang, subscribeLang, getLang } from '@/components/universe/i18n';
 import { createFpsMeter } from '@/components/universe/fps';
 import { registerCapturer } from '@/components/universe/capture';
-import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
+import { getRenderScale, onRenderScaleChange, getDprCap, onDprCapChange } from '@/components/universe/quality';
 import { playEnter, playExit, setOriginFromPoint } from '@/components/universe/originTransition';
 import { playEventSound } from '@/components/universe/soundscape';
 import {
@@ -1055,7 +1055,7 @@ export default function SolarSystemScene() {
     } catch {
       return;
     }
-    const baseDpr = Math.min(window.devicePixelRatio || 1, 2);
+    const baseDpr = Math.min(window.devicePixelRatio || 1, getDprCap());
     const applyRenderScale = () => {
       renderer.setPixelRatio(baseDpr * getRenderScale());
     };
@@ -1904,6 +1904,10 @@ export default function SolarSystemScene() {
       applyRenderScale();
       onResize();
     });
+    const unsubDpr = onDprCapChange(() => {
+      applyRenderScale();
+      onResize();
+    });
 
     /* ------------------------------ loop ------------------------------ */
     const clock = new THREE.Clock();
@@ -2472,6 +2476,7 @@ export default function SolarSystemScene() {
       fps.dispose();
       registerCapturer(null);
       unsubQuality();
+      unsubDpr();
       ro.disconnect();
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('pointermove', onPointerMove);

@@ -9,7 +9,7 @@ import { playEnter, playExit, setOriginFromPoint } from './originTransition';
 import { playEventSound } from './soundscape';
 import { createFpsMeter } from './fps';
 import { registerCapturer } from './capture';
-import { getRenderScale, onRenderScaleChange } from './quality';
+import { getRenderScale, onRenderScaleChange, getDprCap, onDprCapChange } from './quality';
 import { getStarSpriteTexture } from './proceduralTextures';
 
 /**
@@ -434,7 +434,7 @@ export default function ZodiacScene() {
 
     const disposables: { dispose: () => void }[] = [];
     const applyRenderScale = () => {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * getRenderScale());
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, getDprCap()) * getRenderScale());
     };
     applyRenderScale();
     renderer.setSize(wrap.clientWidth, wrap.clientHeight);
@@ -747,6 +747,10 @@ export default function ZodiacScene() {
       applyRenderScale();
       onResize();
     });
+    const unsubDpr = onDprCapChange(() => {
+      applyRenderScale();
+      onResize();
+    });
 
     /* ------------------------------ loop ------------------------------ */
     const clock = new THREE.Clock();
@@ -851,6 +855,7 @@ export default function ZodiacScene() {
       fps.dispose();
       registerCapturer(null);
       unsubQuality();
+      unsubDpr();
       unsubLang();
       ro.disconnect();
       el.removeEventListener('pointermove', onPointerMove);

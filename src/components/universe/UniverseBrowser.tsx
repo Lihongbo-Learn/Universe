@@ -8,13 +8,7 @@ import { Slider } from '@/components/ui/slider';
 import { takeScreenshot, downloadDataUrl } from '@/components/universe/capture';
 import { ambient, playEventSound } from '@/components/universe/soundscape';
 import { playEnter, playExit, setOriginFromPoint, setOriginFromTrigger } from '@/components/universe/originTransition';
-import {
-  cycleQuality,
-  getQualityLevel,
-  getRenderScale,
-  onAutoQualityChange,
-  type QualityLevel,
-} from '@/components/universe/quality';
+import {cycleQuality, getQualityLevel, getRenderScale, onAutoQualityChange, type QualityLevel, setQualityLevel as setGlobalQualityLevel, isAutoQualityEnabled, setAutoQualityEnabled, getDprCap, setDprCap} from '@/components/universe/quality';
 import {
   L,
   useLang,
@@ -111,6 +105,8 @@ export default function UniverseBrowser() {
   const flashTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
   /* origin-aware transitions (一镜到底): panels open from the trigger, close back into it */
+  const [autoQuality, setAutoQualityState] = useState<boolean>(() => isAutoQualityEnabled());
+  const [dprCap, setDprCapState] = useState<number>(() => getDprCap());
   const [exitFrame, setExitFrame] = useState<string | null>(null);
   const transitioningRef = useRef(false);
   const pendingSceneRef = useRef<SceneId | null>(null);
@@ -404,6 +400,24 @@ export default function UniverseBrowser() {
     setLangModeState(mode);
     playEventSound('click');
   }, []);
+
+  /* settings panel — performance presets (v0.7) */
+  const handleQualityPreset = (l: QualityLevel) => {
+    setGlobalQualityLevel(l);
+    setQualityLevel(l);
+    setRenderScale(getRenderScale() * 100);
+    playEventSound('click');
+  };
+  const handleAutoToggle = (v: boolean) => {
+    setAutoQualityEnabled(v);
+    setAutoQualityState(v);
+    playEventSound('click');
+  };
+  const handleDprCap = (v: number) => {
+    setDprCap(v as 1 | 1.5 | 2);
+    setDprCapState(v);
+    playEventSound('click');
+  };
 
   const qualityLabel = L(QUALITY_ZH[qualityLevel], QUALITY_EN[qualityLevel]);
 
@@ -799,6 +813,91 @@ export default function UniverseBrowser() {
               </div>
             </section>
 
+            {/* performance */}
+            <section className="mt-5">
+              <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.26em] text-zinc-500">
+                <Gauge className="h-3.5 w-3.5" aria-hidden />
+                {L('性能', 'Performance')}
+              </p>
+
+              <p className="mt-2.5 text-[11px] text-zinc-400">{L('画质档位', 'Quality preset')}</p>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {QUALITY_ZH.map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => handleQualityPreset(i as QualityLevel)}
+                    aria-pressed={qualityLevel === i}
+                    className={cn(
+                      'rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-all duration-300',
+                      qualityLevel === i
+                        ? 'border-amber-300/40 bg-gradient-to-b from-amber-200/20 to-amber-400/10 text-amber-200 shadow-[inset_0_0_0_1px_rgba(252,211,77,0.25),0_0_18px_rgba(251,191,36,0.12)]'
+                        : 'border-white/10 bg-black/40 text-zinc-300 hover:border-amber-200/30 hover:text-amber-100'
+                    )}
+                  >
+                    {L(label, QUALITY_EN[i])}
+                    <span className="ml-1 text-[10px] text-zinc-500">{QUALITY_SCALE_PERCENT[i]}%</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2">
+                <div>
+                  <p className="text-[11px] font-medium text-zinc-300">{L('FPS 自动调档', 'Auto quality governor')}</p>
+                  <p className="text-[10px] text-zinc-500">
+                    {autoQuality
+                      ? L('低帧自动降档 · 高帧自动回升', 'Drops at low FPS, recovers with headroom')
+                      : L('已关闭 · 手动档位不会被覆盖', 'Off — your manual choice is kept')}
+                  </p>
+                </div>
+                <div className="flex gap-1.5">
+                  {[true, false].map((v) => (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      onClick={() => handleAutoToggle(v)}
+                      aria-pressed={autoQuality === v}
+                      className={cn(
+                        'rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all duration-300',
+                        autoQuality === v
+                          ? 'border-amber-300/40 bg-amber-200/15 text-amber-200'
+                          : 'border-white/10 bg-black/40 text-zinc-400 hover:text-zinc-200'
+                      )}
+                    >
+                      {v ? L('开', 'On') : L('关', 'Off')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="mt-3 text-[11px] text-zinc-400">{L('渲染精度（像素比上限）', 'Render precision (pixel-ratio cap)')}</p>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {([
+                  { v: 1, zh: '省电 1×', en: 'Battery 1×' },
+                  { v: 1.5, zh: '标准 1.5×', en: 'Standard 1.5×' },
+                  { v: 2, zh: '高精细 2×', en: 'Sharp 2×' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    onClick={() => handleDprCap(opt.v)}
+                    aria-pressed={dprCap === opt.v}
+                    className={cn(
+                      'rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-all duration-300',
+                      dprCap === opt.v
+                        ? 'border-amber-300/40 bg-gradient-to-b from-amber-200/20 to-amber-400/10 text-amber-200 shadow-[inset_0_0_0_1px_rgba(252,211,77,0.25),0_0_18px_rgba(251,191,36,0.12)]'
+                        : 'border-white/10 bg-black/40 text-zinc-300 hover:border-amber-200/30 hover:text-amber-100'
+                    )}
+                  >
+                    {L(opt.zh, opt.en)}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-zinc-500">
+                {L('渲染精度越低越省电，高分屏设备选「省电」可大幅提升流畅度，重启页面后保留。', 'Lower precision saves battery — pick Battery on high-DPI screens for a big smoothness boost. Persists across visits.')}
+              </p>
+            </section>
+
             {/* keyboard shortcuts */}
             <section className="mt-5">
               <p className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.26em] text-zinc-500">
@@ -821,7 +920,7 @@ export default function UniverseBrowser() {
             </section>
 
             <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
-              UNIVERSE · v0.6
+              UNIVERSE · v0.7
             </p>
           </div>
         </div>

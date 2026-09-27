@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Play, Square, Sparkles, Orbit, Zap, MapPin, BookOpen, X, Star, Trash2, Crosshair, Download, Upload, Telescope, Users, Hourglass, CircleDot, Ruler, Scale, Sun, GitMerge, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { createFpsMeter } from '@/components/universe/fps';
 import { registerCapturer } from '@/components/universe/capture';
-import { getRenderScale, onRenderScaleChange } from '@/components/universe/quality';
+import { getRenderScale, onRenderScaleChange, getDprCap, onDprCapChange } from '@/components/universe/quality';
 import { playEventSound } from '@/components/universe/soundscape';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
@@ -652,7 +652,7 @@ export default function GalaxyScene() {
       return;
     }
 
-    const baseDpr = Math.min(window.devicePixelRatio || 1, 2);
+    const baseDpr = Math.min(window.devicePixelRatio || 1, getDprCap());
     let pixelRatio = baseDpr;
     renderer.setPixelRatio(pixelRatio);
     renderer.toneMapping = THREE.NoToneMapping;
@@ -975,7 +975,12 @@ export default function GalaxyScene() {
     ro.observe(wrap);
 
     const unsubQuality = onRenderScaleChange((scale) => {
-      pixelRatio = baseDpr * scale;
+      pixelRatio = Math.min(window.devicePixelRatio || 1, getDprCap()) * scale;
+      renderer.setPixelRatio(pixelRatio);
+      onResize();
+    });
+    const unsubDpr = onDprCapChange(() => {
+      pixelRatio = Math.min(window.devicePixelRatio || 1, getDprCap()) * getRenderScale();
       renderer.setPixelRatio(pixelRatio);
       onResize();
     });
@@ -1433,6 +1438,7 @@ export default function GalaxyScene() {
       fps.dispose();
       registerCapturer(null);
       unsubQuality();
+      unsubDpr();
       canvas.removeEventListener('pointerdown', onUserGrab);
       canvas.removeEventListener('wheel', onUserGrab);
       canvas.removeEventListener('pointermove', onHoverMove);
