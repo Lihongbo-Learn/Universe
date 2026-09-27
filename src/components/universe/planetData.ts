@@ -5,7 +5,7 @@
  * Chinese fields stay untouched (zh mode reads them directly, zero regression).
  */
 
-export type PlanetKind = '恒星' | '岩质行星' | '气态巨行星' | '冰巨星' | '周期彗星';
+export type PlanetKind = '恒星' | '岩质行星' | '气态巨行星' | '冰巨星' | '周期彗星' | '地球的天然卫星';
 
 export interface BodyInfo {
   id: string;
@@ -68,6 +68,48 @@ export const SUN_INFO: BodyInfo = {
     'The central star of the solar system, holding 99.86% of its total mass; its core fuses about 600 million tonnes of hydrogen every second.',
   accent: '#fbbf24',
 };
+
+/** 今日月相：以 2000-01-06 18:14 UTC 参考新月推算朔望月龄（29.53 天周期） */
+export function moonPhaseInfo(now: number): {
+  ageDays: number;
+  illumination: number;
+  name: string;
+  nameEn: string;
+} {
+  const SYNODIC = 29.530588;
+  const days = (now - Date.UTC(2000, 0, 6, 18, 14)) / 86400000;
+  const age = ((days % SYNODIC) + SYNODIC) % SYNODIC;
+  const f = age / SYNODIC;
+  const illum = Math.round(((1 - Math.cos((age / SYNODIC) * Math.PI * 2)) / 2) * 100);
+  let name: string;
+  let nameEn: string;
+  if (f < 0.03 || f >= 0.97) {
+    name = '新月';
+    nameEn = 'New Moon';
+  } else if (f < 0.22) {
+    name = '娥眉月';
+    nameEn = 'Waxing Crescent';
+  } else if (f < 0.28) {
+    name = '上弦月';
+    nameEn = 'First Quarter';
+  } else if (f < 0.47) {
+    name = '盈凸月';
+    nameEn = 'Waxing Gibbous';
+  } else if (f < 0.53) {
+    name = '满月';
+    nameEn = 'Full Moon';
+  } else if (f < 0.72) {
+    name = '亏凸月';
+    nameEn = 'Waning Gibbous';
+  } else if (f < 0.78) {
+    name = '下弦月';
+    nameEn = 'Last Quarter';
+  } else {
+    name = '残月';
+    nameEn = 'Waning Crescent';
+  }
+  return { ageDays: age, illumination: illum, name, nameEn };
+}
 
 export const PLANETS: BodyInfo[] = [
   {
@@ -277,6 +319,32 @@ export const PLANETS: BodyInfo[] = [
  * Real figures: nucleus ≈ 15×8 km, a = 17.8 AU, e = 0.967,
  * period ≈ 76 y, perihelion 0.586 AU (1986), next return 2061.
  */
+export const MOON_INFO: BodyInfo = {
+  id: 'moon',
+  name: '月球',
+  en: 'MOON',
+  nameEn: 'The Moon',
+  kind: '地球的天然卫星',
+  kindEn: "Earth's natural satellite",
+  diameterKm: 3474,
+  orbitPeriod: '27.32 天（绕地球公转）',
+  orbitPeriodEn: '27.32 days (around Earth)',
+  rotationPeriod: '27.32 天（潮汐锁定）',
+  rotationPeriodEn: '27.32 days (tidally locked)',
+  moons: 0,
+  au: 1,
+  tempC: '-173 ~ 127 °C（昼夜温差极大）',
+  tempCEn: '-173 to 127 °C (extreme day-night swing)',
+  gravity: '0.166 g',
+  gravityEn: '0.166 g',
+  orbitSpeed: '1.02 km/s（绕地球）',
+  orbitSpeedEn: '1.02 km/s (around Earth)',
+  intro: '月球是地球唯一的天然卫星，平均距离我们 38.44 万公里。它被地球潮汐锁定，永远以同一面朝向地球。月相是太阳、地球、月球三者位置变化的舞台——新月、上弦、满月、下弦，29.5 天循环一次。今晚抬头看看它正处于哪一相。',
+  introEn:
+    "Earth's only natural satellite, averaging 384,400 km away and tidally locked — it always shows us the same face. Its phases are a cosmic dance of Sun, Earth and Moon, cycling from new to full and back every 29.5 days. Look up tonight and see which phase it is in.",
+  accent: '#cbd5e1',
+};
+
 export const HALLEY_INFO: BodyInfo = {
   id: 'halley',
   name: '哈雷彗星',
