@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import {Orbit, Sparkles, CircleDot, Rocket, Loader2, Camera, Check, Gauge, Volume2, VolumeX, Bell, BellOff, SlidersHorizontal, Settings, Languages, Keyboard, X, Star} from 'lucide-react';
+import {Orbit, Sparkles, CircleDot, Rocket, Loader2, Camera, Check, Gauge, Volume2, VolumeX, Bell, BellOff, SlidersHorizontal, Settings, Languages, Keyboard, X, Star, Maximize2, Minimize2} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
 import { takeScreenshot, downloadDataUrl } from '@/components/universe/capture';
@@ -105,6 +105,7 @@ export default function UniverseBrowser() {
   const flashTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
   /* origin-aware transitions (一镜到底): panels open from the trigger, close back into it */
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [autoQuality, setAutoQualityState] = useState<boolean>(() => isAutoQualityEnabled());
   const [dprCap, setDprCapState] = useState<number>(() => getDprCap());
   const [exitFrame, setExitFrame] = useState<string | null>(null);
@@ -323,6 +324,22 @@ export default function UniverseBrowser() {
     playEnter(panel, 'uni-origin-in');
   }, [audioPanelOpen]);
 
+  /* fullscreen toggle (feature-detected — iPhone Safari has no element fullscreen) */
+  const canFullscreen = typeof document !== 'undefined' && typeof document.documentElement.requestFullscreen === 'function';
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
+    playEventSound('click');
+  }, []);
+
   /* F40 — keyboard shortcuts: 1/2/3 scenes · M master mute · Space solar pause · , settings.
      Ignored while typing in inputs or when a button/switch has focus. */
   useEffect(() => {
@@ -341,12 +358,13 @@ export default function UniverseBrowser() {
       else if (k === '2') switchTo('galaxy');
       else if (k === '3') switchTo('blackhole');
       else if (k === '4') switchTo('zodiac');
+      else if (k === 'f') toggleFullscreen();
       else if (k === 'm') handleSoundToggle();
       else if (k === ',') openSettings();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [switchTo, handleSoundToggle, openSettings]);
+  }, [switchTo, handleSoundToggle, openSettings, toggleFullscreen]);
 
   /* volume popover: Esc closes (capture phase, also swallows the zodiac Esc) */
   useEffect(() => {
@@ -428,6 +446,7 @@ export default function UniverseBrowser() {
   ];
   const shortcuts: { keys: string; desc: string }[] = [
     { keys: '1 / 2 / 3 / 4', desc: L('切换场景', 'Switch scenes') },
+    { keys: 'F', desc: L('全屏模式', 'Fullscreen') },
     { keys: 'M', desc: L('静音', 'Mute') },
     { keys: 'Space', desc: L('暂停太阳系', 'Pause the solar system') },
     { keys: ',', desc: L('打开设置', 'Open settings') },
@@ -677,6 +696,21 @@ export default function UniverseBrowser() {
               {shotFlash ? L('截图已保存', 'Saved') : L('截图', 'Screenshot')}
             </span>
           </button>
+          {/* fullscreen (feature-detected) */}
+          {canFullscreen && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? L('退出全屏', 'Exit fullscreen') : L('进入全屏', 'Enter fullscreen')}
+              title={L('全屏模式 · 快捷键 F', 'Fullscreen · shortcut F')}
+              className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2.5 text-zinc-300 backdrop-blur-xl transition-all duration-300 hover:border-sky-300/40 hover:bg-black/60 hover:text-sky-200 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11"
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" aria-hidden /> : <Maximize2 className="h-4 w-4" aria-hidden />}
+              <span className="hidden whitespace-nowrap text-[11px] font-medium tracking-wider lg:inline">
+                {isFullscreen ? L('窗口', 'Window') : L('全屏', 'Fullscreen')}
+              </span>
+            </button>
+          )}
           {/* settings — opens the centered glass dialog */}
           <button
             type="button"
@@ -920,7 +954,7 @@ export default function UniverseBrowser() {
             </section>
 
             <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
-              UNIVERSE · v0.7
+              UNIVERSE · v0.8
             </p>
           </div>
         </div>
