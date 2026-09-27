@@ -39,8 +39,93 @@ function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
+/* -------- v0.7: user-tunable performance settings -------- */
+
+const AUTO_LS_KEY = 'universe-auto-quality';
+const DPR_LS_KEY = 'universe-dpr-cap';
+
+let autoEnabled = true;
+try {
+  autoEnabled = localStorage.getItem(AUTO_LS_KEY) !== '0';
+} catch {
+  /* storage unavailable */
+}
+
+const autoSettingListeners = new Set<(v: boolean) => void>();
+
+export function isAutoQualityEnabled(): boolean {
+  return autoEnabled;
+}
+
+export function setAutoQualityEnabled(v: boolean): void {
+  autoEnabled = v;
+  lowStreak = 0;
+  highStreak = 0;
+  if (v) graceUntil = now() + GRACE_AFTER_CHANGE_MS; // re-judge after a grace window
+  try {
+    localStorage.setItem(AUTO_LS_KEY, v ? '1' : '0');
+  } catch {
+    /* storage unavailable */
+  }
+  autoSettingListeners.forEach((fn) => fn(v));
+}
+
+export function onAutoSettingChange(fn: (v: boolean) => void): () => void {
+  autoSettingListeners.add(fn);
+  return () => {
+    autoSettingListeners.delete(fn);
+  };
+}
+
+let dprCap = 2;
+try {
+  const n = Number(localStorage.getItem(DPR_LS_KEY));
+  if (n === 1 || n === 1.5 || n === 2) dprCap = n;
+} catch {
+  /* storage unavailable */
+}
+
+const dprListeners = new Set<(v: number) => void>();
+
+export function getDprCap(): number {
+  return dprCap;
+}
+
+export function setDprCap(v: 1 | 1.5 | 2): void {
+  dprCap = v;
+  try {
+    localStorage.setItem(DPR_LS_KEY, String(v));
+  } catch {
+    /* storage unavailable */
+  }
+  dprListeners.forEach((fn) => fn(v));
+}
+
+export function onDprCapChange(fn: (v: number) => void): () => void {
+  dprListeners.add(fn);
+  return () => {
+    dprListeners.delete(fn);
+  };
+}
+
+/** Manual quality selection from the settings panel (same override rules as cycling). */
+export function setQualityLevel(l: QualityLevel): void {
+  level = l;
+  lowStreak = 0;
+  highStreak = 0;
+  autoDropped = false;
+  graceUntil = now() + GRACE_AFTER_CHANGE_MS;
+  const scale = SCALE_BY_LEVEL[level];
+  listeners.forEach((fn) => fn(scale));
+}
+
 /** Called by the shared FPS meter twice a second. */
 export function notifyFps(fps: number): void {
+  if (!autoEnabled) {
+    lowStreak = 0;
+    highStreak = 0;
+    return; // user disabled the governor — render scale stays where they put it
+  }
   if (!booted) {
     booted = true;
     graceUntil = now() + GRACE_ON_LOAD_MS;

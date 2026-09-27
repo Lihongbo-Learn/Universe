@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A single-page immersive universe exploration app built with **Next.js + Three.js**. Four scenes — **Solar System / Milky Way / Black Hole / Zodiac** — rendered entirely with procedurally generated materials and particle systems, no external image assets. Roam from planetary orbits to the event horizon, right in your browser.
 
-![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/version-v0.5-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
+![Tech](https://img.shields.io/badge/Next.js%2016-black) ![Tech](https://img.shields.io/badge/TypeScript-blue) ![Tech](https://img.shields.io/badge/Three.js%200.186-orange) ![Tech](https://img.shields.io/badge/Tailwind%204-cyan) ![Version](https://img.shields.io/badge/version-v0.7-amber) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
 ## 📸 Screenshots
 
@@ -55,7 +55,7 @@ A single-page immersive universe exploration app built with **Next.js + Three.js
 ## 🎛️ Global Features
 
 - 🌍 **Bilingual UI (zh/en)**: follows the device language automatically; switchable in the settings panel (中文 / English / follow device), Canvas labels redraw on switch
-- ⚙️ **Settings panel**: language switching + keyboard shortcut cheat sheet (`,` to open)
+- ⚙️ **Settings panel**: language switching + performance tuning (quality presets, FPS governor toggle, pixel-ratio cap) + shortcut cheat sheet (`,` to open)
 - 🪟 **Collapsible panels**: each scene's control panel collapses into a floating pill so small screens can see the full scene
 - ✨ **Origin-aware one-shot transitions**: dialogs and cards open from the exact tap point and close back into it — no jump cuts
 - 🎨 Dark space-themed UI, glassmorphism cards, fully procedural materials (zero external images)
