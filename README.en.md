@@ -58,6 +58,8 @@ A single-page immersive universe exploration app built with **Next.js + Three.js
 - ⚙️ **Settings panel**: language switching + performance tuning (quality presets, FPS governor toggle, pixel-ratio cap) + shortcut cheat sheet (`,` to open)
 - 🪟 **Collapsible panels**: each scene's control panel collapses into a floating pill so small screens can see the full scene
 - ✨ **Origin-aware one-shot transitions**: dialogs and cards open from the exact tap point and close back into it — no jump cuts
+- 🔗 **One-tap share**: copies the page link (native share sheet on mobile)
+- 🌙 **Tonight's visibility**: each zodiac card shows observing conditions based on the current solar position
 - 🎨 Dark space-themed UI, glassmorphism cards, fully procedural materials (zero external images)
 - 📸 One-click screenshot download (including post-processing)
 - 🖥️ Four quality presets (HD / Balanced / Light / Smooth, incl. a 62.5% step) + **bidirectional FPS-adaptive governor** (auto downshift at low FPS, auto recovery with headroom; manual choice always wins)

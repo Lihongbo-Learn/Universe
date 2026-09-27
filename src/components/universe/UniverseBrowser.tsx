@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import {Orbit, Sparkles, CircleDot, Rocket, Loader2, Camera, Check, Gauge, Volume2, VolumeX, Bell, BellOff, SlidersHorizontal, Settings, Languages, Keyboard, X, Star, Maximize2, Minimize2} from 'lucide-react';
+import {Orbit, Sparkles, CircleDot, Rocket, Loader2, Share2, Camera, Check, Gauge, Volume2, VolumeX, Bell, BellOff, SlidersHorizontal, Settings, Languages, Keyboard, X, Star, Maximize2, Minimize2} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
 import { takeScreenshot, downloadDataUrl } from '@/components/universe/capture';
@@ -89,6 +89,8 @@ export default function UniverseBrowser() {
   useLang(); // re-render on language change so every L() below re-evaluates
   const [active, setActive] = useState<SceneId>('solar');
   const [shotFlash, setShotFlash] = useState(false);
+  const [shareFlash, setShareFlash] = useState(false);
+  const shareTimer = useRef<number | null>(null);
   const [qualityLevel, setQualityLevel] = useState<QualityLevel>(getQualityLevel);
   const [renderScale, setRenderScale] = useState(100);
   const [autoToastLevel, setAutoToastLevel] = useState<QualityLevel | null>(null);
@@ -126,6 +128,7 @@ export default function UniverseBrowser() {
     () => () => {
       if (flashTimer.current) window.clearTimeout(flashTimer.current);
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      if (shareTimer.current) window.clearTimeout(shareTimer.current);
     },
     []
   );
@@ -251,6 +254,37 @@ export default function UniverseBrowser() {
   useEffect(() => {
     switchToRef.current = switchTo;
   }, [switchTo]);
+
+  /* share — copy the page link (Web Share on mobile when available) */
+  const handleShare = useCallback(async () => {
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: L('宇宙浏览器 · Universe Explorer', 'Universe Explorer'), url });
+      } else {
+        await navigator.clipboard.writeText(url);
+      }
+      playEventSound('success');
+    } catch {
+      // clipboard blocked (insecure context) — fall back to the classic execCommand path
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        playEventSound('success');
+      } catch {
+        playEventSound('click');
+      }
+    }
+    setShareFlash(true);
+    if (shareTimer.current) window.clearTimeout(shareTimer.current);
+    shareTimer.current = window.setTimeout(() => setShareFlash(false), 1600);
+  }, []);
 
   /* settings dialog open/close (both play the shared UI click).
      一镜到底: the dialog scales out of the gear button's position and
@@ -711,6 +745,29 @@ export default function UniverseBrowser() {
               </span>
             </button>
           )}
+          {/* share — copy the page link */}
+          <button
+            type="button"
+            onClick={() => void handleShare()}
+            aria-label={L('复制页面链接并分享', 'Copy the page link to share')}
+            title={L('复制链接分享', 'Copy link to share')}
+            className={cn(
+              'flex h-9 items-center gap-2 rounded-lg border px-2.5 backdrop-blur-xl transition-all duration-300 portrait:px-2 max-[480px]:px-1.5 max-[480px]:gap-1.5 [@media(pointer:coarse)]:h-11',
+              shareFlash
+                ? 'border-emerald-300/40 bg-emerald-300/15 text-emerald-200 shadow-[0_0_16px_rgba(52,211,153,0.25)]'
+                : 'border-white/10 bg-black/40 text-zinc-300 hover:border-teal-200/40 hover:bg-black/60 hover:text-teal-200'
+            )}
+          >
+            {shareFlash ? <Check className="h-4 w-4" aria-hidden /> : <Share2 className="h-4 w-4" aria-hidden />}
+            <span
+              className={cn(
+                'hidden whitespace-nowrap text-[11px] font-medium tracking-wider lg:inline',
+                shareFlash ? 'text-emerald-200' : 'text-zinc-400'
+              )}
+            >
+              {shareFlash ? L('已复制', 'Copied') : L('分享', 'Share')}
+            </span>
+          </button>
           {/* settings — opens the centered glass dialog */}
           <button
             type="button"
@@ -954,7 +1011,7 @@ export default function UniverseBrowser() {
             </section>
 
             <p className="mt-5 border-t border-white/5 pt-3 text-center text-[10px] font-semibold tracking-[0.34em] text-zinc-600">
-              UNIVERSE · v0.8
+              UNIVERSE · v0.9
             </p>
           </div>
         </div>
